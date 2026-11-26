@@ -215,7 +215,9 @@ void main() {
           localDb: StaffLocalDb.instance,
         );
       });
-      await tester.binding.setSurfaceSize(const Size(360, 640));
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(360, 640);
+      addTearDown(tester.view.reset);
       addTearDown(() async {
         await tester.binding.setSurfaceSize(null);
         await tester.runAsync(() async {

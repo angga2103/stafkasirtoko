@@ -47,7 +47,7 @@ jobs:
         run: flutter analyze --no-pub --no-fatal-infos
 
       - name: Run Unit, Cache Security & Widget Tests
-        run: flutter test --no-pub -r expanded -j 1 --file-reporter json:build/test-report.json || (python3 -c 'import json; d=[json.loads(x) for x in open("build/test-report.json",errors="replace") if x.strip()]; ts={e["test"]["id"]:e["test"]["name"] for e in d if e.get("type")=="testStart"}; [print("::error title=Failed::", ts.get(e.get("testID"), e.get("testID")), e.get("error","").replace("\n"," ")[:400], e.get("stackTrace","").replace("\n"," ")[:400]) for e in d if e.get("type")=="error"]; raise SystemExit(1)' ; exit 1)
+        run: flutter test --no-pub -r expanded -j 1 --file-reporter json:build/test-report.json || (python3 -c 'import json; d=[json.loads(x) for x in open("build/test-report.json",errors="replace") if x.strip()]; ts={e["test"]["id"]:e["test"]["name"] for e in d if e.get("type")=="testStart"}; [print("::error title=TestLog::", ts.get(e.get("testID"), e.get("testID")), e.get("message","").replace("\n"," ")[:700]) for e in d if e.get("type")=="print"]; [print("::error title=Failed::", ts.get(e.get("testID"), e.get("testID")), e.get("error","").replace("\n"," ")[:400]) for e in d if e.get("type")=="error"]; raise SystemExit(1)' ; exit 1)
 
       - name: Build Android Debug APK
         run: flutter build apk --debug --no-tree-shake-icons --android-skip-build-dependency-validation

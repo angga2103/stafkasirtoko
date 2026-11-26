@@ -27,17 +27,23 @@ class KasirTokoStaffApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = MaterialApp(
+      title: 'KasirToko Staff',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.lightTheme,
+      home: const StaffRootRouter(),
+    );
+
+    if (controllerOverride != null) {
+      return ChangeNotifierProvider<StaffSessionController>.value(
+        value: controllerOverride!,
+        child: app,
+      );
+    }
+
     return ChangeNotifierProvider<StaffSessionController>(
-      create: (_) {
-        if (controllerOverride != null) return controllerOverride!;
-        return StaffSessionController()..initialize();
-      },
-      child: MaterialApp(
-        title: 'KasirToko Staff',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        home: const StaffRootRouter(),
-      ),
+      create: (_) => StaffSessionController()..initialize(),
+      child: app,
     );
   }
 }
