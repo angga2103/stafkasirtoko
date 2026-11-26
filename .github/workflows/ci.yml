@@ -1,0 +1,77 @@
+name: KasirToko Staff CI
+
+on:
+  push:
+    branches: [ "main", "feat/**" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  verify-and-build:
+    name: Analyze, Test & Build Staff Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Accept Android SDK Licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install SQLite3 for FFI Tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-0 libsqlite3-dev
+
+      - name: Pub Get
+        run: flutter pub get
+
+      - name: Verify Formatting Diff Notice
+        run: dart format --output=none --set-exit-if-changed lib/ test/ || true
+
+      - name: Static Analysis
+        run: flutter analyze --no-pub
+
+      - name: Run Unit, Cache Security & Widget Tests
+        run: flutter test --no-pub -r expanded -j 1 --file-reporter json:build/test-report.json
+
+      - name: Build Android Debug APK
+        run: flutter build apk --debug --no-tree-shake-icons --android-skip-build-dependency-validation
+
+      - name: Write Build Metadata
+        run: |
+          mkdir -p build/artifacts
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          cat > build/artifacts/build-metadata.json <<EOF
+          {
+            "app": "kasirtoko-staff",
+            "version": "$VERSION",
+            "commit_sha": "${{ github.sha }}",
+            "ref": "${{ github.ref_name }}",
+            "built_at_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          cp build/app/outputs/flutter-apk/app-debug.apk build/artifacts/KasirToko-Staff-debug.apk
+          cp build/test-report.json build/artifacts/test-report.json
+
+      - name: Upload CI Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: KasirToko-Staff-CI-Artifacts
+          path: build/artifacts/
+          retention-days: 14
