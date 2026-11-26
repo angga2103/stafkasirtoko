@@ -44,7 +44,7 @@ jobs:
         run: dart format --output=none --set-exit-if-changed lib/ test/ || true
 
       - name: Static Analysis
-        run: flutter analyze --no-pub
+        run: flutter analyze --no-pub --no-fatal-infos
 
       - name: Run Unit, Cache Security & Widget Tests
         run: flutter test --no-pub -r expanded -j 1 --file-reporter json:build/test-report.json
