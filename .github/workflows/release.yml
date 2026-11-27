@@ -4,66 +4,173 @@ on:
   push:
     tags: [ "v*" ]
   workflow_dispatch:
+    inputs:
+      release_notes_extra:
+        description: "Catatan perubahan tambahan untuk release notes"
+        required: false
+        default: ""
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Build Staff Release / Fallback APK
+    name: Validate, Sign & Publish KasirToko Staff Release APK
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Release Commit
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
           cache: 'gradle'
 
-      - run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      - name: Accept Android SDK Licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - uses: subosito/flutter-action@v2
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
 
-      - run: |
+      - name: Install SQLite3 for FFI Tests
+        run: |
           sudo apt-get update
           sudo apt-get install -y libsqlite3-0 libsqlite3-dev
 
-      - run: flutter pub get
-      - run: flutter analyze --no-pub --no-fatal-infos
-      - run: flutter test --no-pub -j 1
+      - name: Pub Get
+        run: flutter pub get
 
-      - name: Configure Signing & Build APK
+      - name: Static Analysis
+        run: flutter analyze --no-pub --no-fatal-infos
+
+      - name: Run Full Staff Test Suite
+        run: flutter test --no-pub -r expanded -j 1
+
+      - name: Validate Permanent Signing Secrets
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          mkdir -p build/release-out
-          if [ -n "$KEYSTORE_B64" ] && [ -n "$STORE_PASS" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASS" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > /tmp/release.jks
-            cat > android/key.properties <<EOF
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$STORE_PASS" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASS" ]; then
+            echo "::error::Permanent release signing secrets (ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD) are required! Refusing unsigned or debug-signed release."
+            exit 1
+          fi
+
+      - name: Build Signed Release APK & AAB
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYSTORE_FILE="$RUNNER_TEMP/release-staff.jks"
+          cleanup() {
+            rm -f "$KEYSTORE_FILE" android/key.properties
+          }
+          trap cleanup EXIT
+
+          printf '%s' "$KEYSTORE_B64" | tr -d '[:space:]' | base64 -d > "$KEYSTORE_FILE"
+          cat > android/key.properties <<EOF
           storePassword=$STORE_PASS
           keyPassword=$KEY_PASS
           keyAlias=$KEY_ALIAS
-          storeFile=/tmp/release.jks
+          storeFile=$KEYSTORE_FILE
           EOF
-            flutter build apk --release --no-tree-shake-icons --android-skip-build-dependency-validation
-            rm -f /tmp/release.jks android/key.properties
-            cp build/app/outputs/flutter-apk/app-release.apk build/release-out/KasirToko-Staff-release.apk
+
+          flutter build apk --release --no-tree-shake-icons --android-skip-build-dependency-validation
+          flutter build appbundle --release --no-tree-shake-icons --android-skip-build-dependency-validation
+
+      - name: Verify APK Signature, Manifest & Checksums
+        id: verify_apk
+        run: |
+          set -euo pipefail
+          PUBSPEC_VER=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          VER_NAME="${PUBSPEC_VER%%+*}"
+          VER_CODE="${PUBSPEC_VER##*+}"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG_VER="${GITHUB_REF#refs/tags/v}"
           else
-            echo "::notice::ANDROID_KEYSTORE_* secrets not configured. Building debug APK without fabricating signing keys."
-            flutter build apk --debug --no-tree-shake-icons --android-skip-build-dependency-validation
-            cp build/app/outputs/flutter-apk/app-debug.apk build/release-out/KasirToko-Staff-debug-fallback.apk
+            TAG_VER="$VER_NAME"
           fi
 
-      - uses: actions/upload-artifact@v4
+          mkdir -p build/release-out
+          APK_OUT="build/release-out/KasirToko-Staff-v${VER_NAME}-release.apk"
+          AAB_OUT="build/release-out/KasirToko-Staff-v${VER_NAME}-release.aab"
+          cp build/app/outputs/flutter-apk/app-release.apk "$APK_OUT"
+          cp build/app/outputs/bundle/release/app-release.aab "$AAB_OUT"
+
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name "apksigner" | sort -V | tail -n 1)
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name "aapt2" | sort -V | tail -n 1)
+
+          VERIFY_OUT=$("$APKSIGNER" verify --verbose --print-certs "$APK_OUT")
+          echo "$VERIFY_OUT"
+          if echo "$VERIFY_OUT" | grep -qi "Android Debug"; then
+            echo "::error::APK is signed with Android Debug certificate! Official release rejected."
+            exit 1
+          fi
+
+          CERT_SHA256=$(echo "$VERIFY_OUT" | grep -i "Signer #1 certificate SHA-256 digest" | head -n 1 | awk -F': ' '{print $2}')
+          BADGING=$("$AAPT2" dump badging "$APK_OUT")
+          echo "$BADGING" | head -n 5
+          echo "$BADGING" | grep -q "name='com.kasirtoko.app.stafkasirtoko'"
+          echo "$BADGING" | grep -q "versionCode='$VER_CODE'"
+          echo "$BADGING" | grep -q "versionName='$VER_NAME'"
+          echo "$BADGING" | grep -q "application-label:'KasirToko Staff'"
+
+          (cd build/release-out && sha256sum "$(basename "$APK_OUT")" > "$(basename "$APK_OUT").sha256")
+          APK_SHA256=$(awk '{print $1}' "${APK_OUT}.sha256")
+          APK_BYTES=$(wc -c < "$APK_OUT")
+
+          cat > build/release-notes.md <<EOF
+          ## KasirToko Staff v${VER_NAME} (versionCode ${VER_CODE})
+
+          Aplikasi **Terminal Kasir POS Staff** (\`com.kasirtoko.app.stafkasirtoko\`) yang terhubung aman ke KasirToko Admin.
+
+          ### Ringkasan Rilis
+          - Branding resmi **KasirToko Staff** dengan adaptive icon, monochrome, dan aset in-app.
+          - TLS certificate pinning SHA-256 (termasuk transisi rotasi), request signing HMAC-SHA256, Android Keystore storage.
+          - Offline checkout hard-lock, keranjang persisten SQLite cache-only tanpa \`cost_price\`, serta rekonsiliasi idempotency otomatis saat reconnect.
+          ${{ inputs.release_notes_extra }}
+
+          ### Integritas & Keamanan Distribusi
+          - **File:** \`KasirToko-Staff-v${VER_NAME}-release.apk\` (${APK_BYTES} bytes)
+          - **APK SHA-256 Checksum:** \`${APK_SHA256}\`
+          - **Signing Certificate SHA-256:** \`${CERT_SHA256}\`
+
+          ### Catatan Kompatibilitas & Update
+          - Rilis ini menggunakan **permanent RSA-4096 release signing**.
+          - Seluruh rilis berikutnya dengan sertifikat permanen yang sama dan \`versionCode > ${VER_CODE}\` dapat di-update langsung tanpa uninstall.
+          - Jika sebelumnya terpasang debug APK pengembangan, uninstall sekali versi debug lama lalu pasang rilis permanen ini.
+          EOF
+
+          echo "ver_name=$VER_NAME" >> "$GITHUB_OUTPUT"
+          echo "tag_name=v${TAG_VER}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Signed Release Artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: KasirToko-Staff-Release
           path: build/release-out/
-          retention-days: 30
+          retention-days: 90
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "KasirToko Staff v${{ steps.verify_apk.outputs.ver_name }}"
+          body_path: build/release-notes.md
+          files: build/release-out/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

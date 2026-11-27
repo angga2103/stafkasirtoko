@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="staffBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F2D46"/>
+      <stop offset="55%" stop-color="#0B1F3A"/>
+      <stop offset="100%" stop-color="#071427"/>
+    </linearGradient>
+    <radialGradient id="staffGlow" cx="78%" cy="18%" r="58%">
+      <stop offset="0%" stop-color="#14B8A6" stop-opacity="0.30"/>
+      <stop offset="100%" stop-color="#0B1F3A" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="220" fill="url(#staffBg)"/>
+  <rect width="1024" height="1024" rx="220" fill="url(#staffGlow)"/>
+  <rect x="332" y="252" width="316" height="66" rx="22" fill="#14B8A6"/>
+  <path d="M304 302 Q304 270 336 270 H644 Q676 270 676 302 V662 L614 706 L552 662 L490 706 L428 662 L366 706 L304 662 Z" fill="#FFFFFF"/>
+  <rect x="352" y="324" width="276" height="30" rx="10" fill="#0B1F3A"/>
+  <rect x="352" y="378" width="168" height="26" rx="10" fill="#14B8A6"/>
+  <rect x="352" y="448" width="32" height="136" rx="6" fill="#0B1F3A"/>
+  <rect x="402" y="448" width="20" height="136" rx="6" fill="#0B1F3A"/>
+  <rect x="442" y="448" width="40" height="136" rx="6" fill="#0B1F3A"/>
+  <rect x="500" y="448" width="20" height="136" rx="6" fill="#0B1F3A"/>
+  <rect x="538" y="448" width="32" height="136" rx="6" fill="#0B1F3A"/>
+  <rect x="588" y="448" width="40" height="136" rx="6" fill="#0B1F3A"/>
+  <circle cx="678" cy="636" r="122" fill="#0B1F3A"/>
+  <circle cx="678" cy="636" r="98" fill="#10B981"/>
+  <path d="M632 640 L666 674 L728 602" fill="none" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

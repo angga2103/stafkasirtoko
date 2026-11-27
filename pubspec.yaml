@@ -1,7 +1,7 @@
 name: stafkasirtoko
 description: "Aplikasi Terminal Kasir Staff POS Multi-Device Terhubung ke Server POS Admin KasirToko."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.13.4
@@ -33,3 +33,5 @@ dependency_overrides:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/branding/kasirtoko_staff_logo.png

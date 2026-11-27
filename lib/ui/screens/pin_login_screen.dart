@@ -128,6 +128,20 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Center(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Image.asset(
+                        'assets/branding/kasirtoko_staff_logo.png',
+                        width: 52,
+                        height: 52,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) =>
+                            const Icon(Icons.point_of_sale_rounded, size: 44, color: AppTheme.primaryGreen),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   Text(
                     'Terminal: ${ctrl.credentials?.terminalName ?? ""} (${ctrl.credentials?.terminalId ?? ""})',
                     textAlign: TextAlign.center,

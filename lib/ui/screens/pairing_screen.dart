@@ -101,7 +101,19 @@ class _PairingScreenState extends State<PairingScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.point_of_sale_rounded, size: 52, color: AppTheme.primaryGreen),
+                  Center(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Image.asset(
+                        'assets/branding/kasirtoko_staff_logo.png',
+                        width: 58,
+                        height: 58,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) =>
+                            const Icon(Icons.point_of_sale_rounded, size: 52, color: AppTheme.primaryGreen),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 10),
                   const Text(
                     'KasirToko Staff Terminal',

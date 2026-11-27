@@ -47,6 +47,18 @@ class LanWsClient {
   Stream<bool> get connectionStates => _connectionStateController.stream;
   bool get isConnected => _socket != null && _socket!.readyState == WebSocket.open;
 
+  void _emitEvent(WsServerEvent event) {
+    if (!_disposed && !_eventsController.isClosed) {
+      _eventsController.add(event);
+    }
+  }
+
+  void _emitConnectionState(bool connected) {
+    if (!_disposed && !_connectionStateController.isClosed) {
+      _connectionStateController.add(connected);
+    }
+  }
+
   Future<void> connect() async {
     if (_disposed) return;
     _shouldStayConnected = true;
@@ -65,7 +77,11 @@ class LanWsClient {
     await _closeCurrentSocket(notify: false);
 
     final creds = await _credentialStore.loadCredentials();
-    if (creds == null || !creds.isPaired || creds.sessionToken == null || creds.sessionToken!.isEmpty) {
+    if (_disposed ||
+        creds == null ||
+        !creds.isPaired ||
+        creds.sessionToken == null ||
+        creds.sessionToken!.isEmpty) {
       return;
     }
 
@@ -104,13 +120,21 @@ class LanWsClient {
         customClient: pinnedHttp,
       ).timeout(const Duration(seconds: 5));
 
+      if (_disposed) {
+        try {
+          await sock.close();
+        } catch (_) {}
+        return;
+      }
+
       _socket = sock;
       _reconnectAttempt = 0;
       _lastPongAt = DateTime.now();
-      _connectionStateController.add(true);
+      _emitConnectionState(true);
 
       sock.listen(
         (raw) {
+          if (_disposed) return;
           _lastPongAt = DateTime.now();
           try {
             final map = jsonDecode(raw.toString()) as Map<String, dynamic>;
@@ -123,7 +147,7 @@ class LanWsClient {
               _httpClient.signer.calibrateFromServerTimeMs(srvMs);
             }
             if (type.isNotEmpty) {
-              _eventsController.add(WsServerEvent(
+              _emitEvent(WsServerEvent(
                 type: type,
                 data: data,
                 serverTimeMs: srvMs,
@@ -142,14 +166,16 @@ class LanWsClient {
 
       _startHeartbeat();
     } catch (_) {
-      _connectionStateController.add(false);
+      _emitConnectionState(false);
       _scheduleReconnect();
     }
   }
 
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
+    if (_disposed) return;
     _heartbeatTimer = Timer.periodic(heartbeatInterval, (_) {
+      if (_disposed) return;
       final sock = _socket;
       if (sock == null || sock.readyState != WebSocket.open) {
         _onSocketClosed(null);
@@ -181,7 +207,9 @@ class LanWsClient {
       _wsHttpClient?.close(force: true);
     } catch (_) {}
     _wsHttpClient = null;
-    _connectionStateController.add(false);
+    if (_disposed) return;
+
+    _emitConnectionState(false);
 
     if (closeCode == 4003) {
       // Explicit server revocation stops auto-reconnect cleanly.
@@ -216,7 +244,7 @@ class LanWsClient {
     } catch (_) {}
     _wsHttpClient = null;
     if (notify) {
-      _connectionStateController.add(false);
+      _emitConnectionState(false);
     }
   }
 

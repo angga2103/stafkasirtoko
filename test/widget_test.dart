@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:stafkasirtoko/core/network/lan_http_client.dart';
+import 'package:stafkasirtoko/core/network/lan_ws_client.dart';
 import 'package:stafkasirtoko/core/security/request_signer.dart';
 import 'package:stafkasirtoko/core/security/secure_credential_store.dart';
 import 'package:stafkasirtoko/core/utils/format_and_scan_helpers.dart';
@@ -202,6 +203,27 @@ void main() {
         throwsA(isA<LanNetworkException>()),
       );
       expect(HttpStatus.ok, 200);
+    });
+
+    test('LanWsClient safely guards stream controller close/dispose races', () async {
+      final credStore = InMemoryCredentialStore();
+      await credStore.saveCredentials(const StaffCredentials(
+        terminalId: 'TERM-001',
+        terminalCode: 'TERM-001',
+        terminalName: 'HP Kasir',
+        deviceUuid: 'uuid-ws',
+        deviceToken: 'tok',
+        deviceSecret: 'sec',
+        tlsCertSha256: 'abc',
+        serverUrl: 'https://127.0.0.1:1',
+        sessionToken: 'sess',
+      ));
+      final http = LanHttpClient(credentialStore: credStore);
+      final ws = LanWsClient(credentialStore: credStore, httpClient: http);
+      final connectFut = ws.connect();
+      ws.dispose();
+      await connectFut;
+      expect(ws.isConnected, isFalse);
     });
   });
 

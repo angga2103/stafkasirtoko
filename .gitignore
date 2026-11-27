@@ -42,6 +42,7 @@ app.*.map.json
 **/android/app/debug
 **/android/app/profile
 **/android/app/release
+**/android/build/
 
 # Secrets, Keystores, Certificates & Local Databases
 *.jks
@@ -49,6 +50,9 @@ app.*.map.json
 *.p12
 *.pem
 *.key
+*.b64
+*.aesgcm
+SIGNING_RECOVERY.txt
 *.db
 *.db-wal
 *.db-shm
