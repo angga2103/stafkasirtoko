@@ -20,9 +20,9 @@ Berjalan otomatis ketika tag versi `v*` di-push (misal `v2.3.0` pada Admin atau 
 1. Memastikan seluruh 4 GitHub Secrets (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`) tersedia — **gagal otomatis** bila secret belum diisi (tidak pernah memproduksi release unsigned/debug).
 2. Mendekode keystore sementara ke `$RUNNER_TEMP` dan membuat `android/key.properties` sementara (dihapus via `trap EXIT`).
 3. Menjalankan static analysis + full test suite.
-4. Membangun `flutter build apk --release` dan `flutter build appbundle --release`.
-5. Memverifikasi APK menggunakan `apksigner verify --verbose --print-certs` (memastikan sertifikat bukan `Android Debug`) dan `aapt2 dump badging` (memastikan `applicationId`, `versionCode`, dan `versionName` sesuai `pubspec.yaml`).
-6. Menghasilkan `KasirToko-Admin-vX.Y.Z-release.apk` / `KasirToko-Staff-vX.Y.Z-release.apk`, `.aab`, serta checksum `.sha256`.
+4. Membangun split-per-ABI (`--split-per-abi --target-platform android-arm,android-arm64 --split-debug-info=build/app/outputs/symbols`), ARM-only universal APK (`--target-platform android-arm,android-arm64 --split-debug-info=build/app/outputs/symbols`), serta `flutter build appbundle --release` dengan tree-shaking ikon dan R8 minify aktif.
+5. Memverifikasi setiap APK menggunakan `apksigner verify --verbose --print-certs` (memastikan sertifikat bukan `Android Debug`) dan `aapt2 dump badging` (memastikan `applicationId`, `versionCode`, `versionName`, dan `application-label` sesuai).
+6. Menghasilkan `KasirToko-*-vX.Y.Z-arm64-v8a-release.apk`, `KasirToko-*-vX.Y.Z-armeabi-v7a-release.apk`, `KasirToko-*-vX.Y.Z-arm-universal-release.apk`, `.aab`, serta checksum `.sha256`.
 7. Mengunggah artifact release (retensi 90 hari) dan menerbitkan **GitHub Release** lengkap dengan release notes berisi SHA-256 checksum & fingerprint sertifikat.
 
 ---
@@ -61,8 +61,9 @@ Berjalan otomatis ketika tag versi `v*` di-push (misal `v2.3.0` pada Admin atau 
    flutter pub get
    flutter analyze --no-pub --no-fatal-infos
    flutter test --no-pub -r expanded -j 1
-   flutter build apk --release --no-tree-shake-icons --android-skip-build-dependency-validation
+   flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --split-debug-info=build/app/outputs/symbols --android-skip-build-dependency-validation
    ```
+   *(Gunakan tanpa `--split-per-abi` jika hanya menginginkan satu file ARM universal.)*
 3. Verifikasi tanda tangan & manifest APK:
    ```bash
    apksigner verify --verbose --print-certs build/app/outputs/flutter-apk/app-release.apk

@@ -79,6 +79,36 @@ android {
             if (hasPermanentReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            val reqTargets = project.findProperty("target-platform")?.toString() ?: ""
+            if (reqTargets.isNotBlank() && !reqTargets.contains("x64")) {
+                excludes += "**/x86_64/*.so"
+            }
+            if (reqTargets.isNotBlank() && !reqTargets.contains("android-x86")) {
+                excludes += "**/x86/*.so"
+            }
+        }
+        resources {
+            excludes += setOf(
+                "DebugProbesKt.bin",
+                "META-INF/**/LICENSE*",
+                "META-INF/**/NOTICE*",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/AL2.0",
+                "META-INF/LGPL2.1",
+            )
         }
     }
 }

@@ -86,8 +86,9 @@ jobs:
           storeFile=$KEYSTORE_FILE
           EOF
 
-          flutter build apk --release --no-tree-shake-icons --android-skip-build-dependency-validation
-          flutter build appbundle --release --no-tree-shake-icons --android-skip-build-dependency-validation
+          flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64 --split-debug-info=build/app/outputs/symbols --android-skip-build-dependency-validation
+          flutter build apk --release --target-platform android-arm,android-arm64 --split-debug-info=build/app/outputs/symbols --android-skip-build-dependency-validation
+          flutter build appbundle --release --target-platform android-arm,android-arm64 --split-debug-info=build/app/outputs/symbols --android-skip-build-dependency-validation
 
       - name: Verify APK Signature, Manifest & Checksums
         id: verify_apk
@@ -103,32 +104,42 @@ jobs:
           fi
 
           mkdir -p build/release-out
-          APK_OUT="build/release-out/KasirToko-Staff-v${VER_NAME}-release.apk"
+          APK_ARM64="build/release-out/KasirToko-Staff-v${VER_NAME}-arm64-v8a-release.apk"
+          APK_ARMV7="build/release-out/KasirToko-Staff-v${VER_NAME}-armeabi-v7a-release.apk"
+          APK_UNIV="build/release-out/KasirToko-Staff-v${VER_NAME}-arm-universal-release.apk"
           AAB_OUT="build/release-out/KasirToko-Staff-v${VER_NAME}-release.aab"
-          cp build/app/outputs/flutter-apk/app-release.apk "$APK_OUT"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "$APK_ARM64"
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "$APK_ARMV7"
+          cp build/app/outputs/flutter-apk/app-release.apk "$APK_UNIV"
           cp build/app/outputs/bundle/release/app-release.aab "$AAB_OUT"
 
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name "apksigner" | sort -V | tail -n 1)
           AAPT2=$(find "$ANDROID_HOME/build-tools" -name "aapt2" | sort -V | tail -n 1)
 
-          VERIFY_OUT=$("$APKSIGNER" verify --verbose --print-certs "$APK_OUT")
-          echo "$VERIFY_OUT"
-          if echo "$VERIFY_OUT" | grep -qi "Android Debug"; then
-            echo "::error::APK is signed with Android Debug certificate! Official release rejected."
-            exit 1
-          fi
+          CERT_SHA256=""
+          for APK_FILE in "$APK_ARM64" "$APK_ARMV7" "$APK_UNIV"; do
+            VERIFY_OUT=$("$APKSIGNER" verify --verbose --print-certs "$APK_FILE")
+            echo "$VERIFY_OUT"
+            if echo "$VERIFY_OUT" | grep -qi "Android Debug"; then
+              echo "::error::APK $APK_FILE is signed with Android Debug certificate! Official release rejected."
+              exit 1
+            fi
+            CERT_SHA256=$(echo "$VERIFY_OUT" | grep -i "Signer #1 certificate SHA-256 digest" | head -n 1 | awk -F': ' '{print $2}')
+            BADGING=$("$AAPT2" dump badging "$APK_FILE")
+            echo "$BADGING" | head -n 5
+            echo "$BADGING" | grep -q "name='com.kasirtoko.app.stafkasirtoko'"
+            echo "$BADGING" | grep -q "versionName='$VER_NAME'"
+            echo "$BADGING" | grep -q "application-label:'KasirToko Staff'"
+          done
+          "$AAPT2" dump badging "$APK_UNIV" | grep -q "versionCode='$VER_CODE'"
 
-          CERT_SHA256=$(echo "$VERIFY_OUT" | grep -i "Signer #1 certificate SHA-256 digest" | head -n 1 | awk -F': ' '{print $2}')
-          BADGING=$("$AAPT2" dump badging "$APK_OUT")
-          echo "$BADGING" | head -n 5
-          echo "$BADGING" | grep -q "name='com.kasirtoko.app.stafkasirtoko'"
-          echo "$BADGING" | grep -q "versionCode='$VER_CODE'"
-          echo "$BADGING" | grep -q "versionName='$VER_NAME'"
-          echo "$BADGING" | grep -q "application-label:'KasirToko Staff'"
-
-          (cd build/release-out && sha256sum "$(basename "$APK_OUT")" > "$(basename "$APK_OUT").sha256")
-          APK_SHA256=$(awk '{print $1}' "${APK_OUT}.sha256")
-          APK_BYTES=$(wc -c < "$APK_OUT")
+          (cd build/release-out && for F in *.apk *.aab; do sha256sum "$F" > "$F.sha256"; done)
+          SHA_ARM64=$(awk '{print $1}' "${APK_ARM64}.sha256")
+          SHA_ARMV7=$(awk '{print $1}' "${APK_ARMV7}.sha256")
+          SHA_UNIV=$(awk '{print $1}' "${APK_UNIV}.sha256")
+          BYTES_ARM64=$(wc -c < "$APK_ARM64")
+          BYTES_ARMV7=$(wc -c < "$APK_ARMV7")
+          BYTES_UNIV=$(wc -c < "$APK_UNIV")
 
           cat > build/release-notes.md <<EOF
           ## KasirToko Staff v${VER_NAME} (versionCode ${VER_CODE})
@@ -139,11 +150,13 @@ jobs:
           - Branding resmi **KasirToko Staff** dengan adaptive icon, monochrome, dan aset in-app.
           - TLS certificate pinning SHA-256 (termasuk transisi rotasi), request signing HMAC-SHA256, Android Keystore storage.
           - Offline checkout hard-lock, keranjang persisten SQLite cache-only tanpa \`cost_price\`, serta rekonsiliasi idempotency otomatis saat reconnect.
+          - Optimasi rilis: NDK strip simbol native, \`--split-per-abi\` (arm64-v8a / armeabi-v7a), kompresi JNI libs, tree-shaking ikon, dan R8 minify.
           ${{ inputs.release_notes_extra }}
 
           ### Integritas & Keamanan Distribusi
-          - **File:** \`KasirToko-Staff-v${VER_NAME}-release.apk\` (${APK_BYTES} bytes)
-          - **APK SHA-256 Checksum:** \`${APK_SHA256}\`
+          - **\`KasirToko-Staff-v${VER_NAME}-arm64-v8a-release.apk\`** (${BYTES_ARM64} bytes) — SHA-256: \`${SHA_ARM64}\`
+          - **\`KasirToko-Staff-v${VER_NAME}-armeabi-v7a-release.apk\`** (${BYTES_ARMV7} bytes) — SHA-256: \`${SHA_ARMV7}\`
+          - **\`KasirToko-Staff-v${VER_NAME}-arm-universal-release.apk\`** (${BYTES_UNIV} bytes) — SHA-256: \`${SHA_UNIV}\`
           - **Signing Certificate SHA-256:** \`${CERT_SHA256}\`
 
           ### Catatan Kompatibilitas & Update

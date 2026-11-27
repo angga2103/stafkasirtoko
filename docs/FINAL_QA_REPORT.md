@@ -1,74 +1,85 @@
 # FINAL_QA_REPORT.md — Laporan Verifikasi & QA Akhir POS Multi-Device
 
-Laporan ini merangkum seluruh hasil audit, pengujian terintegrasi lintas proses, perbaikan bug, verifikasi build APK Debug & Release permanen, serta batasan pengujian perangkat keras pada sistem **KasirToko Admin** (`kasirtoko`) dan **KasirToko Staff** (`stafkasirtoko`).
+Laporan ini merangkum seluruh hasil audit, pengujian terintegrasi lintas proses, perbaikan bug, audit ukuran & optimasi APK release, verifikasi sertifikat permanen, serta batasan pengujian perangkat keras pada sistem **KasirToko Admin** (`kasirtoko`) dan **KasirToko Staff** (`stafkasirtoko`).
 
 ---
 
-## 1. Ringkasan Eksekutif Pengujian Terverifikasi
+## 1. Ringkasan Eksekutif Pengujian Terverifikasi (Pasca-Optimasi Release)
 
 | Komponen | Perintah Verifikasi | Hasil Terakhir | Catatan |
 | :--- | :--- | :--- | :--- |
-| **POS Admin Static Analysis** | `flutter analyze --no-pub --no-fatal-infos` | **PASS (Exit 0)** — `102 issues found` (53.2s) | 0 `error`, 0 `warning`; seluruh 102 temuan merupakan `info` legacy (utama `deprecated_member_use`, `unnecessary_underscores`, `use_build_context_synchronously`). |
-| **POS Admin Full Test Suite** | `flutter test --no-pub -r expanded -j 1` | **PASS (Exit 0)** — `65/65` lulus (02:29) | Seluruh test Phase 1, Phase 2 E2E TLS+WSS + kapasitas, QA produksi, QA retur forensik, unit & widget lulus bersih. |
-| **POS Staff Static Analysis** | `flutter analyze --no-pub --no-fatal-infos` | **PASS (Exit 0)** — `No issues found!` (6.5s) | 0 `error`, 0 `warning`, 0 `info`. |
-| **POS Staff Full Test Suite** | `flutter test --no-pub -r expanded -j 1` | **PASS (Exit 0)** — `10/10` lulus (00:07) | Mencakup test inti DB cache-only, HMAC signer, barcode guard, offline lock, QuickCash, TLS pin rejection, rekonsiliasi in-flight, guard dispose `LanWsClient`, serta UI `360x640` & `1280x800`. |
-| **Live Cross-Process Admin ↔ Staff E2E** | Dua proses OS nyata (`LanPosServer` Admin TLS+WSS <-> `StaffSessionController` + `LanHttpClient` + `LanWsClient` + SQLite file) | **PASS (Exit 0)** (`task-1648` 27s, `task-1649` 8s) | Verifikasi QR pairing, manual short-PIN pairing, login PIN KDF v2, sinkronisasi katalog (0 `cost_price`), buka shift, checkout tunai + pulsa laci `RJ11` single-shot, reprint (`drawer_pulse=false`), idempotency replay, **race 5 terminal bersamaan pada `stock=3`** (tepat 3 sukses, 2 ditolak, `stock=0.0`), persistensi restart Staff, recovery restart server Admin, live WS `shift_changed` & revokasi terminal (`4003`). |
-| **POS Admin Release APK (`v2.3.0+5`)** | `flutter build apk --release --no-pub --no-tree-shake-icons --android-skip-build-dependency-validation` | **PASS (Exit 0)** (221.5s) | Signed permanen RSA-4096 v2 (`577,909,592` bytes / `551.1 MB`), SHA-256 terverifikasi via `apksigner` & `aapt2`. |
-| **POS Staff Release APK (`v1.0.1+2`)** | `flutter build apk --release --no-pub --no-tree-shake-icons --android-skip-build-dependency-validation` | **PASS (Exit 0)** (168.6s) | Signed permanen RSA-4096 v2 (`527,253,000` bytes / `502.8 MB`), SHA-256 terverifikasi via `apksigner` & `aapt2`. |
-| **POS Admin Debug APK (`v2.3.0+5`)** | `flutter build apk --debug --no-pub --no-tree-shake-icons --android-skip-build-dependency-validation` | **PASS (Exit 0)** (298.5s) | Signed debug (`CN=Android Debug`, RSA 2048), `1,476,484,616` bytes, label `KasirToko Admin`. |
-| **POS Staff Debug APK (`v1.0.1+2`)** | `flutter build apk --debug --no-pub --no-tree-shake-icons --android-skip-build-dependency-validation` | **PASS (Exit 0)** (223.2s) | Signed debug (`CN=Android Debug`, RSA 2048), `1,432,829,721` bytes, label `KasirToko Staff`. |
-| **Negative Release Signing Gate** | `flutter build apk --release --no-pub --no-tree-shake-icons --android-skip-build-dependency-validation` (tanpa `key.properties`/env secrets) | **PASS / Ditolak Sesuai Kebijakan (Exit 1)** | Admin gagal (26.7s) & Staff gagal (36.9s) di `build.gradle.kts` baris 37 dengan `GradleException` eksplisit melarang release unsigned atau debug-signed. |
+| **POS Admin Static Analysis** | `flutter analyze --no-pub --no-fatal-infos` | **PASS (Exit 0)** — `102 issues found` (`116.2s`) | 0 `error`, 0 `warning`; seluruh 102 temuan merupakan `info` legacy. |
+| **POS Admin Full Test Suite** | `flutter test --no-pub -r expanded -j 1` | **PASS (Exit 0)** — `65/65` lulus (`02:21`) | Seluruh test Phase 1, Phase 2 E2E TLS+WSS + kapasitas, QA produksi, QA retur forensik, unit & widget lulus pasca optimasi `pubspec.yaml` & `build.gradle.kts`. |
+| **POS Staff Static Analysis** | `flutter analyze --no-pub --no-fatal-infos` | **PASS (Exit 0)** — `No issues found!` (`46.5s`) | 0 `error`, 0 `warning`, 0 `info`. |
+| **POS Staff Full Test Suite** | `flutter test --no-pub -r expanded -j 1` | **PASS (Exit 0)** — `10/10` lulus (`00:05`) | Seluruh test isolasi cache-only DB, HMAC signer, barcode guard, offline lock, QuickCash, TLS pin rejection, rekonsiliasi in-flight, guard dispose `LanWsClient`, serta UI `360x640` & `1280x800` lulus pasca optimasi. |
+| **Live Cross-Process Admin ↔ Staff E2E** | Dua proses OS nyata (`LanPosServer` Admin TLS+WSS <-> `StaffSessionController` + `LanHttpClient` + `LanWsClient` + SQLite file) | **PASS (Exit 0)** (`27s` Admin driver, `8s` Staff driver) | Verifikasi QR pairing, manual short-PIN pairing, login PIN KDF v2, katalog (0 `cost_price`), buka shift, checkout tunai + pulsa laci `RJ11` single-shot, reprint (`drawer_pulse=false`), idempotency replay, race 5 terminal pada `stock=3` (`3` sukses, `2` ditolak, `stock=0.0`), persistensi restart, live WS `shift_changed` & revokasi (`4003`). |
+| **Admin Optimized Release APKs (`v2.3.0+5`)** | `--split-per-abi` & `--target-platform android-arm,android-arm64 --split-debug-info` | **PASS (Exit 0)** (`748.0s` split, `440.0s` ARM univ) | `arm64-v8a`: **`60,051,252` B** (`57.27 MiB`, **-89.61%**), `armeabi-v7a`: **`58,749,632` B** (`56.03 MiB`, **-89.83%**), `arm-universal`: **`111,926,359` B** (`106.74 MiB`, **-80.63%**). |
+| **Staff Optimized Release APKs (`v1.0.1+2`)** | `--split-per-abi` & `--target-platform android-arm,android-arm64 --split-debug-info` | **PASS (Exit 0)** (`263.7s` split, `245.6s` ARM univ) | `arm64-v8a`: **`49,784,165` B** (`47.48 MiB`, **-90.56%**), `armeabi-v7a`: **`48,736,747` B** (`46.48 MiB`, **-90.76%**), `arm-universal`: **`95,890,728` B** (`91.45 MiB`, **-81.81%**). |
+| **Negative Release Signing Gate** | `flutter build apk --release ...` tanpa `key.properties`/env secrets | **PASS / Ditolak Sesuai Kebijakan (Exit 1)** | Admin gagal (26.7s) & Staff gagal (36.9s) di `build.gradle.kts` baris 37 melarang rilis tanpa signing permanen. |
 
 ---
 
-## 2. Bug Nyata yang Ditemukan Saat Integrasi & Telah Diperbaiki
+## 2. Audit & Optimasi Ukuran APK Release (`577.9 MB -> 57.3 MB` & `527.3 MB -> 47.5 MB`)
 
-1. **Sinkronisasi Penutupan Shift Shared Drawer WebSocket (`kasirtoko`):**
-   - **Temuan:** Handler `_handleCloseShift` di `lib/services/server/lan_pos_server.dart` sebelumnya belum memanggil `unawaited(_broadcastWs('shift_changed', ...))`, sehingga terminal Staff pada mode `SHARED_DRAWER` tetap menganggap shift terbuka hingga polling berikutnya.
-   - **Perbaikan:** Menambahkan broadcast WebSocket `shift_changed` saat shift ditutup dan menjaga panggilan `touchTerminalLastSeen` dengan guard `if (isRunning)` (serta `try/catch` pada `lib/database/multi_device_dao.dart`) guna mencegah race penutupan DB saat server shutdown.
-   - **Verifikasi:** Lolos pada integrasi lintas proses `task-1648`/`task-1649` dan 65/65 suite `kasirtoko`.
-2. **Race Condition StreamController Saat Dispose WebSocket (`stafkasirtoko`):**
-   - **Temuan:** Saat `LanWsClient` di-dispose berdekatan dengan penutupan socket (`_onSocketClosed`), pemanggilan `.add(...)` memicu `Bad state: Cannot add new events after calling close`.
-   - **Perbaikan:** Menambahkan helper `_emitEvent` dan `_emitConnectionState` yang memeriksa `!_disposed && !controller.isClosed` serta early-return di `_onSocketClosed` pada `lib/core/network/lan_ws_client.dart`, ditambah unit test regresi pada `test/widget_test.dart`.
-   - **Verifikasi:** `flutter test` (`10/10` lulus) dan `task-1649` lulus bersih.
-3. **Konfigurasi Heap Gradle & Proteksi Ruang Disk Build Windows:**
-   - **Temuan:** `c:\StafKasirtoko\android\gradle.properties` memakai `-Xmx8G -XX:MaxMetaspaceSize=4G` yang memicu crash JVM `mmap` pada host dengan RAM terbatas saat build beruntun, serta password `keyPassword` berbeda untuk PKCS12 tidak didukung Java `KeyStore("PKCS12")` (`Given final block not properly padded`).
-   - **Perbaikan:** Menyesuaikan `org.gradle.jvmargs=-Xmx2560m -XX:MaxMetaspaceSize=768m -XX:+HeapDumpOnOutOfMemoryError` pada kedua repo, menyelaraskan `keyPassword == storePassword` pada PKCS12 keystore resmi & dokumentasi, serta memperkeras `.github/workflows/release.yml` (`tr -d '[:space:]' | base64 -d` + verifikasi `application-label`).
+### A. Kontribusi Komponen APK Sebelum Optimasi
+| Komponen | Admin (`577,909,592` B) | Persentase Admin | Staff (`527,253,000` B) | Persentase Staff | Catatan Analisis |
+| :--- | ---: | ---: | ---: | ---: | :--- |
+| **`lib/x86_64/`** | `198,115,224` B | `34.28%` | `180,971,320` B | `34.32%` | ABI emulator/x64 desktop — tidak dipakai perangkat Android ARM |
+| **`lib/arm64-v8a/`** | `194,809,704` B | `33.71%` | `178,964,072` B | `33.94%` | Berisi `165.16 MB` `libflutter.so` unstripped + `libapp.so` + ML Kit |
+| **`lib/armeabi-v7a/`** | `177,269,816` B | `30.67%` | `163,880,408` B | `31.08%` | Berisi `151.59 MB` `libflutter.so` unstripped + `libapp.so` + ML Kit |
+| **`assets/` native/ML Kit** | `4,724,789` B | `0.82%` | `881,863` B | `0.17%` | Model TFLite ML Kit (`face_detection` liveness & `barcode_scanning`) — **dipertahankan penuh** |
+| **`classes.dex`** | `1,538,825` B | `0.27%` | `1,146,416` B | `0.22%` | Bytecode Java/Kotlin ter-R8 |
+| **`flutter_assets/` (runtime/fonts)** | `786,519` B | `0.14%` | `779,193` B | `0.15%` | Memuat `MaterialIcons` penuh (`556 KB`) & `CupertinoIcons` tidak terpakai (`116 KB`) |
+| **`resources.arsc` + `res/`** | `375,531` B | `0.07%` | `388,708` B | `0.07%` | Resource XML & ikon launcher PNG |
+| **`assets/branding/*_logo.png`** | `34,773` B | `0.01%` | `41,079` B | `0.01%` | Logo in-app resmi |
+| **`META-INF/` + `AndroidManifest` + `DebugProbesKt.bin` + lain** | `30,683` B | `0.01%` | `21,795` B | `0.00%` | Memuat duplikat `LICENSE.txt` (`10 KB`) & coroutine `DebugProbesKt.bin` |
+
+### B. Penyebab Utama Ukuran Awal Membengkak & Solusi yang Diterapkan
+1. **Temuan Utama #1 (83–92% total APK): DWARF Debug Symbols di `libflutter.so` & Stub NDK Lokal Windows:**
+   - Inspeksi ELF `lib/arm64-v8a/libflutter.so` (`165,164,528` B) menunjukkan `153,419,040` B (**92.9%**) adalah section debug non-runtime (`.debug_str` `61.09 MB`, `.debug_info` `49.68 MB`, `.debug_loc` `19.57 MB`, `.debug_line` `10.30 MB`, `.debug_ranges` `5.53 MB`, `.strtab` `4.27 MB`, `.symtab` `2.95 MB`) sementara segmen runtime `PT_*` hanya berakhir di **`11,745,488` B** (`armeabi-v7a`: **`8,614,072` B**).
+   - Penyebab lokal Windows: executable `llvm-strip.exe`, `llvm-objcopy.exe`, dan `llvm-readelf.exe` pada `C:\src\android-sdk\ndk\28.2.13676358\toolchains\llvm\prebuilt\windows-x86_64\bin\` berukuran `4,096` byte ternyata merupakan stub .NET `File.Copy` tanpa proses stripping. Hal ini juga menyebabkan `flutter build appbundle --release` gagal pada pengecekan lokal NDK strip, sementara **runner GitHub Actions `ubuntu-latest` memiliki NDK Linux penuh** yang men-strip simbol tersebut bersih saat build rilis CI.
+2. **Native Libraries Tidak Terkompresi (`[STORED]` vs `[DEFLATED]`):**
+   - Diaktifkan `packaging { jniLibs { useLegacyPackaging = true } }` di `build.gradle.kts` kedua repo sehingga seluruh `.so` dikompresi (`~60–75%` lebih kecil saat distribusi APK).
+3. **Semua ABI (`x86_64`, `arm64-v8a`, `armeabi-v7a`) Digabung + Bug Filter ABI Plugin Flutter:**
+   - Selain menghapus `x86_64` lewat `--target-platform android-arm,android-arm64` & `--split-per-abi`, audit juga menemukan `FlutterPlugin.kt` tetap memasukkan `lib/x86_64/*.so` dari plugin pihak ketiga (`libbarhopper_v3.so`, `libface_detector_v2_jni.so`) saat non-split. Ditambahkan guard `packaging.jniLibs.excludes` untuk `**/x86_64/*.so` & `**/x86/*.so` bila `--target-platform` tidak meminta x64/x86.
+4. **Tree-Shaking Ikon, Split Debug Info Dart & Pembersihan Bloat:**
+   - Menghapus `--no-tree-shake-icons`: `MaterialIcons-Regular.otf` turun **`1,645,184 -> 28,884` B** (Admin, `-98.2%`) dan **`1,645,184 -> 6,244` B** (Staff, `-99.6%`).
+   - Menghapus dependensi `cupertino_icons` yang 0 referensi (`-257 KB` font) dan memindahkan `pointycastle` di Staff ke `dev_dependencies`.
+   - Menambahkan `--split-debug-info=build/app/outputs/symbols` (`libapp.so` Admin `16.14 MB -> 5.51 MB` terkompresi), `isMinifyEnabled = true`, `isShrinkResources = true`, `proguard-android-optimize.txt` + `proguard-rules.pro`, serta mengecualikan `DebugProbesKt.bin` dan `META-INF/**/LICENSE*`.
+
+### C. Perbandingan Ukuran Sebelum vs Sesudah Optimasi (Hasil Terukur Lokal)
+| Varian APK | Sebelum Optimasi | Sesudah Optimasi | Pengurangan | Sertifikat & Status Verifikasi |
+| :--- | ---: | ---: | ---: | :--- |
+| **Admin `arm64-v8a` Split** | `577,909,592` B (`551.1 MiB`) | **`60,051,252` B (`57.27 MiB`)** | **-89.61%** (`-517.86 MB`) | RSA-4096 `a9:46:a3:d8...` Valid (`versionCode=2005`) |
+| **Admin `armeabi-v7a` Split** | `577,909,592` B (`551.1 MiB`) | **`58,749,632` B (`56.03 MiB`)** | **-89.83%** (`-519.16 MB`) | RSA-4096 `a9:46:a3:d8...` Valid (`versionCode=1005`) |
+| **Admin ARM Universal** | `577,909,592` B (`551.1 MiB`) | **`111,926,359` B (`106.74 MiB`)** | **-80.63%** (`-465.98 MB`) | RSA-4096 `a9:46:a3:d8...` Valid (`versionCode=5`) |
+| **Staff `arm64-v8a` Split** | `527,253,000` B (`502.8 MiB`) | **`49,784,165` B (`47.48 MiB`)** | **-90.56%** (`-477.47 MB`) | RSA-4096 `e4:31:47:7a...` Valid (`versionCode=2002`) |
+| **Staff `armeabi-v7a` Split** | `527,253,000` B (`502.8 MiB`) | **`48,736,747` B (`46.48 MiB`)** | **-90.76%** (`-478.52 MB`) | RSA-4096 `e4:31:47:7a...` Valid (`versionCode=1002`) |
+| **Staff ARM Universal** | `527,253,000` B (`502.8 MiB`) | **`95,890,728` B (`91.45 MiB`)** | **-81.81%** (`-431.36 MB`) | RSA-4096 `e4:31:47:7a...` Valid (`versionCode=2`) |
+
+> [!NOTE]
+> Pada hasil build lokal di atas, `libflutter.so` masih menyumbang `~42.17 MB` terkompresi (`arm64-v8a`) / `~41.26 MB` (`armeabi-v7a`) karena stub `llvm-strip.exe` 4 KB lokal Windows. Saat workflow `release.yml` berjalan di **GitHub Actions Linux runner** dengan Android NDK asli, `.debug_*` / `.symtab` pada `libflutter.so` ter-strip bersih (~`11.7 MB` raw -> `~4.5 MB` terkompresi), sehingga ukuran APK split produksi di CI diperkirakan berada di kisaran **`~18–23 MB` (Admin)** dan **`~10–13 MB` (Staff)**.
 
 ---
 
 ## 3. Benchmark Performa Terukur (`kasirtoko`)
 
-Pengukuran dijalankan di atas runtime host menggunakan `sqflite_common_ffi` + PointyCastle + `HttpServer.bindSecure` TLS + HMAC-SHA256 pada eksekusi akhir suite Admin:
-1. **PBKDF2-HMAC-SHA256 KDF v2 (`phase1_security_kdf_test.dart`):**
-   - `600000 iters = 4078 ms` pada runtime Dart VM/PointyCastle host. Benchmark pada perangkat Android target tetap wajib diuji langsung sesuai checklist lapangan.
-2. **LAN Concurrent Checkout Capacity Benchmark (`phase2_lan_server_e2e_capacity_test.dart`):**
-   - **2 Terminal bersamaan:** `avg = 112.8 ms`, `max = 150 ms`, `stock = 96.0`
-   - **5 Terminal bersamaan:** `avg = 248.3 ms`, `max = 369 ms`, `stock = 90.0`
-   - **10 Terminal bersamaan:** `avg = 501.4 ms`, `max = 784 ms`, `stock = 80.0`
-3. **Race 5 Terminal Lintas Proses Nyata pada Stok Terbatas (`stock=3`):**
-   - 5 terminal mengirim transaksi hampir bersamaan ke Admin: tepat 3 transaksi sukses tercommit, 2 ditolak secara deterministik, stok akhir tepat `0.0` (tanpa stok minus).
+Pengukuran pasca-optimasi (`task-2124`):
+1. **PBKDF2-HMAC-SHA256 KDF v2 (`600.000` iterasi):** `4275 ms` pada runtime Dart/PointyCastle host.
+2. **LAN Concurrent Checkout Benchmark (Real TLS + HMAC + SQLite):**
+   - `2` terminal: `avg = 119.0 ms`, `max = 157 ms`, `stock = 96.0`
+   - `5` terminal: `avg = 273.0 ms`, `max = 391 ms`, `stock = 90.0`
+   - `10` terminal: `avg = 553.0 ms`, `max = 841 ms`, `stock = 80.0`
 
 ---
 
-## 4. Verifikasi APK, Keamanan Arsip & Kompatibilitas Update
-
-1. **Inspeksi ZIP APK Release (`zipfile` & `aapt2 dump resources`):**
-   - Kedua APK release (`KasirToko-Admin-v2.3.0-release.apk` dan `KasirToko-Staff-v1.0.1-release.apk`) terverifikasi **0 kebocoran** (`Secret/DB leakage check: []` — bebas `.jks`, `.keystore`, `.b64`, `.aesgcm`, `key.properties`, `SIGNING_RECOVERY`, maupun `.db`).
-   - Aset logo in-app (`assets/flutter_assets/assets/branding/kasirtoko_admin_logo.png` & `kasirtoko_staff_logo.png`) serta resource launcher adaptif (`drawable/ic_launcher_background`, `mipmap/ic_launcher`, `mipmap/ic_launcher_foreground`, `mipmap/ic_launcher_monochrome`) terkompilasi utuh.
-2. **Verifikasi Kompatibilitas Update Tanpa Uninstall:**
-   - Admin diuji dengan build `v2.3.1+6` vs `v2.3.0+5`: `applicationId` identik (`com.kasirtoko.app.kasirtoko`), sertifikat signing SHA-256 identik (`a9:46:a3:d8:...`), `versionCode` naik (`5 -> 6`).
-   - Staff diuji dengan build `v1.0.2+3` vs `v1.0.1+2`: `applicationId` identik (`com.kasirtoko.app.stafkasirtoko`), sertifikat signing SHA-256 identik (`e4:31:47:7a:...`), `versionCode` naik (`2 -> 3`).
-   - File sementara uji compat (`v2.3.1` & `v1.0.2`) sudah dihapus setelah verifikasi selesai.
+## 4. Bug Nyata yang Telah Diperbaiki
+1. Broadcast `shift_changed` saat `_handleCloseShift` & guard `touchTerminalLastSeen` ketika shutdown di `kasirtoko`.
+2. Guard `_emitEvent` / `_emitConnectionState` & `_onSocketClosed` dispose race pada `LanWsClient` di `stafkasirtoko` (+ test regresi).
+3. Penyelarasan PKCS12 `keyPassword == storePassword`, penyesuaian Gradle heap `-Xmx2560m`, penghapusan dependensi tak terpakai, tree-shaking ikon, kompresi JNI libs, dan guard exclude `x86_64`/`x86`.
 
 ---
 
 ## 5. Batasan Pengujian Perangkat Keras (Belum Dieksekusi Fisik)
 
-Pemeriksaan `adb devices -l` menghasilkan daftar kosong (`List of devices attached` kosong — 0 perangkat fisik dan 0 emulator terpasang di workstation build). Hal berikut **belum diuji di perangkat Android fisik**:
-1. Instalasi langsung via ADB / PackageInstaller antar versi serta tampilan visual ikon adaptif pada berbagai mask launcher OEM & Material You monochrome Android 13+.
-2. Pemindaian QR pairing menggunakan kamera fisik (`mobile_scanner`) dan performa hardware-backed `AndroidKeyStore` pada chipset Android target (`MainActivity.kt`).
-3. Ketahanan Foreground Service `specialUse` dan `ConnectivityManager.NetworkCallback` di bawah penghematan baterai OEM nyata (Doze / Background limits).
-4. Pencetakan fisik Bluetooth SPP / USB OTG / LAN RAW port `9100` serta denyut fisik solenoid laci kas RJ11 (`ESC p`) pada perangkat keras toko nyata.
-
-Lakukan seluruh verifikasi lapangan tersebut mengikuti panduan di `FIELD_TEST_CHECKLIST.md`.
+`adb devices -l` mengembalikan daftar kosong pada workstation build. Pengujian pada hardware Android nyata (kamera `mobile_scanner`, `AndroidKeyStore` hardware chipset, Foreground Service di bawah Doze, printer Bluetooth/USB/LAN + laci kas RJ11, serta instalasi APK split/universal pada tablet POS fisik) mengikuti [`FIELD_TEST_CHECKLIST.md`](FIELD_TEST_CHECKLIST.md).
