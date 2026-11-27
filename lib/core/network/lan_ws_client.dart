@@ -31,6 +31,7 @@ class LanWsClient {
   DateTime _lastPongAt = DateTime.now();
   bool _shouldStayConnected = false;
   bool _disposed = false;
+  bool _isConnecting = false;
   int _reconnectAttempt = 0;
 
   final StreamController<WsServerEvent> _eventsController =
@@ -46,6 +47,8 @@ class LanWsClient {
   Stream<WsServerEvent> get events => _eventsController.stream;
   Stream<bool> get connectionStates => _connectionStateController.stream;
   bool get isConnected => _socket != null && _socket!.readyState == WebSocket.open;
+  bool get isConnecting => _isConnecting && !isConnected;
+  bool get isReconnecting => _shouldStayConnected && !isConnected && _reconnectAttempt > 0;
 
   void _emitEvent(WsServerEvent event) {
     if (!_disposed && !_eventsController.isClosed) {
@@ -113,6 +116,7 @@ class LanWsClient {
     );
     _wsHttpClient = pinnedHttp;
 
+    _isConnecting = true;
     try {
       final sock = await WebSocket.connect(
         wsUri.toString(),
@@ -168,6 +172,8 @@ class LanWsClient {
     } catch (_) {
       _emitConnectionState(false);
       _scheduleReconnect();
+    } finally {
+      _isConnecting = false;
     }
   }
 

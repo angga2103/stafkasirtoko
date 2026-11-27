@@ -21,7 +21,7 @@ Dokumen ini merupakan laporan rilis akhir untuk sistem POS Multi-Device **KasirT
      - **Ukuran:** **`111,926,359` bytes** (`106.74 MiB` — turun `80.63%`) | `versionCode = 5`
      - **SHA-256:** `bd45239e38e1f6fd06e2eaf1401c082c436ef68b014826c799e6755e41b88355`
 
-### B. KasirToko Staff (`v1.0.1`)
+### B. KasirToko Staff (`v1.0.2+3` — Rilis Terbaru)
 - **Repository & Branch:** `https://github.com/angga2103/stafkasirtoko` (`main` & `feat/pos-staff-app`)
 - **Package ID (`applicationId`):** `com.kasirtoko.app.stafkasirtoko` | **Launcher Label:** `KasirToko Staff`
 - **Certificate Permanen (`apksigner`):** Valid (v2 scheme), `CN=KasirToko Staff Release, OU=POS Engineering, O=KasirToko, L=Indonesia, C=ID`, RSA **4096-bit**, SHA-256: `e4:31:47:7a:7a:e0:4c:f0:86:f0:99:ba:7d:a5:3d:cf:0b:b6:5f:98:7c:bc:76:da:c0:a7:78:c8:40:60:62:32`
@@ -50,5 +50,5 @@ Dokumen ini merupakan laporan rilis akhir untuk sistem POS Multi-Device **KasirT
 1. Isi 4 GitHub Repository Secrets di masing-masing repository (**Settings -> Secrets and variables -> Actions**):
    - **`ANDROID_KEYSTORE_BASE64`** (isi file `.jks.b64` aplikasi terkait), **`ANDROID_KEYSTORE_PASSWORD`**, **`ANDROID_KEY_ALIAS`** (`kasirtoko_admin` / `kasirtoko_staff`), **`ANDROID_KEY_PASSWORD`** (PKCS12: bernilai sama dengan `ANDROID_KEYSTORE_PASSWORD`).
 2. Merge branch `feat/phase2-multi-device-complete` -> `main` pada `kasirtoko`.
-3. Push tag rilis (`v2.3.0` di `kasirtoko`, `v1.0.1` di `stafkasirtoko`) agar GitHub Actions Ubuntu runner (dengan NDK asli untuk stripping penuh `libflutter.so` + build `.aab` & split APKs) menerbitkan halaman **GitHub Release** resmi beserta `.apk` (`arm64-v8a`, `armeabi-v7a`, `arm-universal`), `.aab`, dan `.sha256`.
+3. Push tag rilis (`v2.3.0` di `kasirtoko`, `v1.0.2` di `stafkasirtoko`) agar GitHub Actions Ubuntu runner (dengan NDK asli untuk stripping penuh `libflutter.so` + build `.aab` & split APKs) menerbitkan halaman **GitHub Release** resmi beserta `.apk` (`arm64-v8a`, `armeabi-v7a`, `arm-universal`), `.aab`, dan `.sha256`.
 4. Eksekusi verifikasi perangkat keras fisik sesuai `FIELD_TEST_CHECKLIST.md`.

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../providers/staff_session_controller.dart';
+import 'staff_barcode_scanner_screen.dart';
 
 class PairingScreen extends StatefulWidget {
   const PairingScreen({super.key});
@@ -19,6 +20,7 @@ class _PairingScreenState extends State<PairingScreen> {
   final _certPinCtrl = TextEditingController();
   final _nameCtrl = TextEditingController(text: 'Kasir Staff 1');
   bool _isSubmitting = false;
+  bool _isScannerOpen = false;
 
   @override
   void dispose() {
@@ -67,10 +69,28 @@ class _PairingScreenState extends State<PairingScreen> {
 
   Future<void> _openQrScanner() async {
     final name = _nameCtrl.text.trim().isEmpty ? 'Terminal Kasir' : _nameCtrl.text.trim();
-    final scannedRaw = await Navigator.push<String>(
-      context,
-      MaterialPageRoute(builder: (_) => const _QrPairingScannerPage()),
-    );
+    if (_isScannerOpen || _isSubmitting) return;
+    _isScannerOpen = true;
+    String? scannedRaw;
+    try {
+      scannedRaw = await Navigator.push<String>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => StaffBarcodeScannerScreen(
+            title: 'Scan QR Pairing Admin',
+            subtitle: 'Arahkan kamera ke QR Pairing di aplikasi POS Admin',
+            initialMode: StaffScannerMode.single,
+            allowModeToggle: false,
+            formats: const [BarcodeFormat.qrCode],
+            barcodeValidator: (raw) => raw.contains('pairing_code'),
+            invalidCodeMessage: 'Bukan QR Pairing Admin (pairing_code tidak ditemukan).',
+            manualInputHint: 'Tempel payload JSON QR Pairing (berisi pairing_code)',
+          ),
+        ),
+      );
+    } finally {
+      _isScannerOpen = false;
+    }
     if (scannedRaw == null || !mounted) return;
     setState(() => _isSubmitting = true);
     final ctrl = Provider.of<StaffSessionController>(context, listen: false);
@@ -234,33 +254,3 @@ class _PairingScreenState extends State<PairingScreen> {
   }
 }
 
-class _QrPairingScannerPage extends StatefulWidget {
-  const _QrPairingScannerPage();
-
-  @override
-  State<_QrPairingScannerPage> createState() => _QrPairingScannerPageState();
-}
-
-class _QrPairingScannerPageState extends State<_QrPairingScannerPage> {
-  bool _popped = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Scan QR Pairing Admin')),
-      body: MobileScanner(
-        onDetect: (capture) {
-          if (_popped) return;
-          for (final b in capture.barcodes) {
-            final raw = b.rawValue ?? '';
-            if (raw.contains('pairing_code')) {
-              _popped = true;
-              Navigator.pop(context, raw);
-              return;
-            }
-          }
-        },
-      ),
-    );
-  }
-}

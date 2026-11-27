@@ -62,6 +62,7 @@ class StaffSessionController extends ChangeNotifier {
 
   bool _wsConnected = false;
   bool _adminReachable = false;
+  bool _isConnecting = false;
   bool _isCheckingOut = false;
   bool _isSyncing = false;
   bool _revokedFlag = false;
@@ -126,6 +127,8 @@ class StaffSessionController extends ChangeNotifier {
 
   bool get wsConnected => _wsConnected;
   bool get adminReachable => _adminReachable;
+  bool get isConnecting => _isConnecting || wsClient.isConnecting;
+  bool get isReconnecting => !_adminReachable && wsClient.isReconnecting;
   bool get isCheckingOut => _isCheckingOut;
   bool get isSyncing => _isSyncing;
   String? get statusMessage => _statusMessage;
@@ -382,6 +385,8 @@ class StaffSessionController extends ChangeNotifier {
 
   Future<bool> checkConnectivityAndRestoreSession() async {
     if (_credentials == null || !_credentials!.isPaired) return false;
+    _isConnecting = true;
+    notifyListeners();
     try {
       await httpClient.checkHealth(
         baseUrl: _credentials!.serverUrl,
@@ -430,6 +435,9 @@ class StaffSessionController extends ChangeNotifier {
       _wsConnected = false;
       notifyListeners();
       return false;
+    } finally {
+      _isConnecting = false;
+      notifyListeners();
     }
   }
 
@@ -842,6 +850,84 @@ class StaffSessionController extends ChangeNotifier {
     return _cartItems
         .where((i) => i.productId == productId)
         .fold(0.0, (s, e) => s + e.baseStockQty);
+  }
+
+  /// Total quantity of a product in cart regardless of isService/trackStock flags.
+  double getProductCartDisplayQty(int productId) {
+    return _cartItems
+        .where((i) => i.productId == productId)
+        .fold(0.0, (s, e) => s + (e.qty * e.conversionFactor));
+  }
+
+  /// Exact quantity for a specific unit line (defaults to baseUnitName).
+  double getUnitCartQty(int productId, String unitName) {
+    final match = _cartItems
+        .where((i) => i.productId == productId && i.unitName == unitName)
+        .firstOrNull;
+    return match?.qty ?? 0.0;
+  }
+
+  /// Number of distinct cart lines belonging to a product.
+  int getProductCartLineCount(int productId) {
+    return _cartItems.where((i) => i.productId == productId).length;
+  }
+
+  double get totalCartItemsQty => _cartItems.fold(0.0, (s, e) => s + e.qty);
+
+  Future<({bool success, String? message})> decrementProductQty(
+    StaffProduct product, {
+    StaffProductUnit? unit,
+    double qtyDelta = 1.0,
+  }) async {
+    final unitName = unit?.unitName ?? product.baseUnit;
+    var idx = _cartItems.indexWhere(
+      (i) => i.productId == product.id && i.unitName == unitName,
+    );
+    if (idx == -1 && unit == null) {
+      idx = _cartItems.lastIndexWhere((i) => i.productId == product.id);
+    }
+    if (idx == -1) return (success: false, message: null);
+    final cur = _cartItems[idx];
+    final nextQty = cur.qty - qtyDelta;
+    await updateCartItemQty(idx, nextQty <= 0.0001 ? 0.0 : nextQty);
+    return (success: true, message: null);
+  }
+
+  Future<({bool success, String? message})> setProductQtyDirect(
+    StaffProduct product,
+    double targetQty, {
+    StaffProductUnit? unit,
+  }) async {
+    final unitName = unit?.unitName ?? product.baseUnit;
+    final conv = unit?.conversionFactor ?? 1.0;
+    final idx = _cartItems.indexWhere(
+      (i) => i.productId == product.id && i.unitName == unitName,
+    );
+    if (targetQty <= 0.0001) {
+      if (idx != -1) {
+        await updateCartItemQty(idx, 0.0);
+      }
+      return (success: true, message: null);
+    }
+    if (idx == -1) {
+      return addToCart(product, unit: unit, qtyDelta: targetQty);
+    }
+    if (product.managesStock) {
+      final otherBase = _cartItems
+          .asMap()
+          .entries
+          .where((e) => e.key != idx && e.value.productId == product.id)
+          .fold(0.0, (s, e) => s + e.value.baseStockQty);
+      if (otherBase + (targetQty * conv) > product.stock + 0.0001) {
+        final msg =
+            'Stok "${product.name}" tidak mencukupi (tersedia ${CurrencyHelper.formatNumber(product.stock)} ${product.baseUnit}).';
+        _lastError = msg;
+        notifyListeners();
+        return (success: false, message: msg);
+      }
+    }
+    await updateCartItemQty(idx, targetQty);
+    return (success: true, message: null);
   }
 
   Future<({bool success, String? message})> addToCart(

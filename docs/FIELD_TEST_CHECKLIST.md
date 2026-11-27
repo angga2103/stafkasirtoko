@@ -6,7 +6,7 @@ Pengujian otomatis (`flutter test`, TLS+WSS loopback E2E, dan build APK) telah l
 
 ## 1. Branding, Instalasi & Update Kompatibilitas
 - [ ] Pasang `KasirToko-Admin-v2.3.0-release.apk` di HP/Tablet Admin: ikon *storefront + dashboard* Navy/Biru tampil tajam tanpa terpotong di launcher (circle, squircle, dan themed monochrome Android 13+), label terpasang adalah **`KasirToko Admin`**.
-- [ ] Pasang `KasirToko-Staff-v1.0.1-release.apk` di HP/Tablet Staff: ikon *struk + barcode + centang* Navy/Turquoise tampil jelas bersebelahan dan mudah dibedakan dari Admin, label terpasang adalah **`KasirToko Staff`**.
+- [ ] Pasang `KasirToko-Staff-v1.0.2-arm64-v8a-release.apk` di HP/Tablet Staff: ikon *struk + barcode + centang* Navy/Turquoise tampil jelas bersebelahan dan mudah dibedakan dari Admin, label terpasang adalah **`KasirToko Staff`**.
 - [ ] Verifikasi dengan `adb shell dumpsys package com.kasirtoko.app.kasirtoko` dan `.stafkasirtoko` bahwa sertifikat APK cocok dengan SHA-256 resmi pada [`ANDROID_SIGNING_GUIDE.md`](ANDROID_SIGNING_GUIDE.md).
 - [ ] Uji update in-place dari versi `N` ke `N+1` (`versionCode` lebih tinggi, keystore sama): pastikan data produk, transaksi, pelanggan, pairing terminal, dan login tetap utuh tanpa uninstall.
 
@@ -27,3 +27,9 @@ Pengujian otomatis (`flutter test`, TLS+WSS loopback E2E, dan build APK) telah l
 - [ ] Uji cetak otomatis dari Staff ke Admin dengan printer **Bluetooth SPP**, **USB OTG**, dan **LAN RAW (9100)**.
 - [ ] Verifikasi pembukaan laci kas RJ11 **hanya** terbuka saat pembayaran `tunai` sukses, `allow_auto_open_drawer = true`, dan printer bukan PDF/System — serta **tidak terbuka** pada QRIS, Transfer, Kasbon, maupun cetak ulang (*reprint*).
 - [ ] Matikan printer fisik saat Staff checkout -> transaksi tetap berhasil tercatat di Admin, status print job menjadi `retrying`/`failed`, dan dapat dicetak ulang dari antrean Admin setelah printer nyala tanpa mengirim pulsa laci ganda.
+
+## 5. Pengujian Scanner & UI Kasir Nyata (`v1.0.2`)
+- [ ] Uji scanner **QR Pairing** & **Barcode POS**: buka -> kembali tanpa scan -> buka lagi berkali-kali secara cepat (`5x`), pastikan layar **tidak pernah blank hitam** dan selalu kembali normal ke POS Kasir.
+- [ ] Uji **tolak izin kamera -> Coba Lagi -> Input Barcode Manual -> Kembali ke Kasir**, serta uji **minimize / matikan layar (`paused` -> `resumed`)** saat scanner terbuka lalu kembali ke app.
+- [ ] Uji scan **1 produk**, scan ulang produk sama cepat (`cooldown` 1,4 detik menahan duplikat), dan scan **multi-produk beruntun** dalam mode `Multi Scan` maupun `1x & Tutup`.
+- [ ] Uji **stepper qty langsung (`- qty +`)** di kartu produk pada HP (`<= 412dp`), batas stok pada produk berstok, layanan `JASA` tanpa stok, penuruan qty hingga `0` (hapus item), serta scroll dialog **Pembayaran Transaksi** saat keyboard virtual terbuka.
