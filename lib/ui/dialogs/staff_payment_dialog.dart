@@ -208,16 +208,22 @@ class _StaffPaymentDialogState extends State<StaffPaymentDialog> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text(
-                                  'Potong Saldo Kredit Retur',
-                                  style: TextStyle(fontSize: 12, color: AppTheme.accentBlue),
+                                const Expanded(
+                                  child: Text(
+                                    'Potong Saldo Kredit Retur',
+                                    style: TextStyle(fontSize: 12, color: AppTheme.accentBlue),
+                                  ),
                                 ),
-                                Text(
-                                  '-${CurrencyHelper.format(ctrl.creditUsed)}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.accentBlue,
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    '-${CurrencyHelper.format(ctrl.creditUsed)}',
+                                    textAlign: TextAlign.right,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.accentBlue,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -226,16 +232,22 @@ class _StaffPaymentDialogState extends State<StaffPaymentDialog> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text(
-                                  'Sisa Harus Dibayar',
-                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                const Expanded(
+                                  child: Text(
+                                    'Sisa Harus Dibayar',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                  ),
                                 ),
-                                Text(
-                                  CurrencyHelper.format(netDue),
-                                  style: const TextStyle(
-                                    fontSize: 15.5,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.primaryGreen,
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    CurrencyHelper.format(netDue),
+                                    textAlign: TextAlign.right,
+                                    style: const TextStyle(
+                                      fontSize: 15.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.primaryGreen,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -259,7 +271,11 @@ class _StaffPaymentDialogState extends State<StaffPaymentDialog> {
                       items: [
                         const DropdownMenuItem<int?>(
                           value: null,
-                          child: Text('Pelanggan Umum (Walk-in)'),
+                          child: Text(
+                            'Pelanggan Umum (Walk-in)',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         ...registeredCustomers.map((StaffCustomer c) => DropdownMenuItem<int?>(
                               value: c.id,
@@ -332,46 +348,69 @@ class _StaffPaymentDialogState extends State<StaffPaymentDialog> {
                     ),
                     const SizedBox(height: 8),
 
-                    // Compact 4-Method Row matching Admin POS style
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _methodTile(
-                            ctrl: ctrl,
-                            value: 'tunai',
-                            label: 'Tunai',
-                            icon: Icons.payments_rounded,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: _methodTile(
-                            ctrl: ctrl,
-                            value: 'qris',
-                            label: 'QRIS',
-                            icon: Icons.qr_code_2_rounded,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: _methodTile(
-                            ctrl: ctrl,
-                            value: 'transfer',
-                            label: 'Transfer',
-                            icon: Icons.account_balance_rounded,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: _methodTile(
-                            ctrl: ctrl,
-                            value: 'kasbon',
-                            label: 'Kasbon',
-                            icon: Icons.hourglass_top_rounded,
-                            mutedDisabled: !hasRegisteredCust,
-                          ),
-                        ),
-                      ],
+                    // Responsive Payment Method Grid/Row matching Admin POS style
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final textScale = MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.5);
+                        final singleRowFits = (constraints.maxWidth - 18) / 4 >= 64 * textScale;
+                        final tunai = _methodTile(
+                          ctrl: ctrl,
+                          value: 'tunai',
+                          label: 'Tunai',
+                          icon: Icons.payments_rounded,
+                        );
+                        final qris = _methodTile(
+                          ctrl: ctrl,
+                          value: 'qris',
+                          label: 'QRIS',
+                          icon: Icons.qr_code_2_rounded,
+                        );
+                        final transfer = _methodTile(
+                          ctrl: ctrl,
+                          value: 'transfer',
+                          label: 'Transfer',
+                          icon: Icons.account_balance_rounded,
+                        );
+                        final kasbon = _methodTile(
+                          ctrl: ctrl,
+                          value: 'kasbon',
+                          label: 'Kasbon',
+                          icon: Icons.hourglass_top_rounded,
+                          mutedDisabled: !hasRegisteredCust,
+                        );
+                        if (!singleRowFits) {
+                          return Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(child: tunai),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: qris),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(child: transfer),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: kasbon),
+                                ],
+                              ),
+                            ],
+                          );
+                        }
+                        return Row(
+                          children: [
+                            Expanded(child: tunai),
+                            const SizedBox(width: 6),
+                            Expanded(child: qris),
+                            const SizedBox(width: 6),
+                            Expanded(child: transfer),
+                            const SizedBox(width: 6),
+                            Expanded(child: kasbon),
+                          ],
+                        );
+                      },
                     ),
                     if (!hasRegisteredCust)
                       const Padding(
@@ -459,22 +498,28 @@ class _StaffPaymentDialogState extends State<StaffPaymentDialog> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              tunaiInsufficient ? 'Kurang Bayar' : 'Kembalian',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                color: tunaiInsufficient ? AppTheme.accentRed : AppTheme.textDark,
+                            Expanded(
+                              child: Text(
+                                tunaiInsufficient ? 'Kurang Bayar' : 'Kembalian',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: tunaiInsufficient ? AppTheme.accentRed : AppTheme.textDark,
+                                ),
                               ),
                             ),
-                            Text(
-                              CurrencyHelper.format(
-                                tunaiInsufficient ? shortfall : ctrl.changeAmount,
-                              ),
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: tunaiInsufficient ? AppTheme.accentRed : AppTheme.primaryGreen,
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                CurrencyHelper.format(
+                                  tunaiInsufficient ? shortfall : ctrl.changeAmount,
+                                ),
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: tunaiInsufficient ? AppTheme.accentRed : AppTheme.primaryGreen,
+                                ),
                               ),
                             ),
                           ],

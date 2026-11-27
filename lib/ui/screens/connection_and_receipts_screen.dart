@@ -14,13 +14,19 @@ class ConnectionAndReceiptsScreen extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         title: const Text('Buka Laci Kasir Manual'),
-        content: TextField(
-          controller: reasonCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Alasan (Wajib masuk log audit Admin)',
-            hintText: 'Mis. Tukar uang kembalian pecahan kecil',
-            border: OutlineInputBorder(),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: SingleChildScrollView(
+            child: TextField(
+              controller: reasonCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Alasan (Wajib masuk log audit Admin)',
+                hintText: 'Mis. Tukar uang kembalian pecahan kecil',
+                border: OutlineInputBorder(),
+              ),
+            ),
           ),
         ),
         actions: [
@@ -51,9 +57,14 @@ class ConnectionAndReceiptsScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Koneksi, Struk & Diagnostik')),
-      body: ListView(
-        padding: const EdgeInsets.all(14),
-        children: [
+      body: SafeArea(
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: ListView(
+              padding: const EdgeInsets.all(14),
+              children: [
           Container(
             padding: const EdgeInsets.all(16),
             decoration: AppTheme.cardDecoration(),
@@ -112,7 +123,12 @@ class ConnectionAndReceiptsScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('30 Struk Terbaru Terminal', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    const Expanded(
+                      child: Text(
+                        '30 Struk Terbaru Terminal',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                    ),
                     TextButton(
                       onPressed: () => ctrl.syncRecentReceiptsFromServer(),
                       child: const Text('Muat Ulang'),
@@ -140,6 +156,9 @@ class ConnectionAndReceiptsScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+          ),
+        ),
       ),
     );
   }

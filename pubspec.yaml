@@ -1,7 +1,7 @@
 name: stafkasirtoko
 description: "Aplikasi Terminal Kasir Staff POS Multi-Device Terhubung ke Server POS Admin KasirToko."
 publish_to: 'none'
-version: 1.0.2+3
+version: 1.0.3+4
 
 environment:
   sdk: ^3.13.4

@@ -86,6 +86,7 @@ class _StaffReceiptDialogState extends State<StaffReceiptDialog> {
     final r = widget.receipt;
 
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       title: Row(
         children: [
           const Icon(Icons.receipt_long_rounded, color: AppTheme.primaryGreen),
@@ -96,7 +97,7 @@ class _StaffReceiptDialogState extends State<StaffReceiptDialog> {
         ],
       ),
       content: SizedBox(
-        width: 390,
+        width: (MediaQuery.sizeOf(context).width - 80).clamp(200.0, 400.0),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -198,8 +199,20 @@ class _StaffReceiptDialogState extends State<StaffReceiptDialog> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(k, style: TextStyle(fontSize: 12.5, fontWeight: bold ? FontWeight.bold : FontWeight.normal)),
-            Text(v, style: TextStyle(fontSize: 12.5, fontWeight: bold ? FontWeight.bold : FontWeight.w500)),
+            Expanded(
+              child: Text(
+                k,
+                style: TextStyle(fontSize: 12.5, fontWeight: bold ? FontWeight.bold : FontWeight.normal),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                v,
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 12.5, fontWeight: bold ? FontWeight.bold : FontWeight.w500),
+              ),
+            ),
           ],
         ),
       );

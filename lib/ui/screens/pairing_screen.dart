@@ -110,11 +110,18 @@ class _PairingScreenState extends State<PairingScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Hubungkan Terminal POS Staff')),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+      body: SafeArea(
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + MediaQuery.viewInsetsOf(context).bottom,
+              ),
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: AppTheme.cardDecoration(),
@@ -179,39 +186,56 @@ class _PairingScreenState extends State<PairingScreen> {
                   const Row(
                     children: [
                       Expanded(child: Divider(height: 28)),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 10),
-                        child: Text('atau input manual', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                      Flexible(
+                        flex: 3,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: Text(
+                            'atau input manual',
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                          ),
+                        ),
                       ),
                       Expanded(child: Divider(height: 28)),
                     ],
                   ),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: TextField(
-                          controller: _hostCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'IP Server Admin',
-                            hintText: '192.168.43.1',
-                            border: OutlineInputBorder(),
-                          ),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+                      final stackVert = constraints.maxWidth < 310 || (constraints.maxWidth < 360 && textScale > 1.3);
+                      final ipField = TextField(
+                        controller: _hostCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'IP Server Admin',
+                          hintText: '192.168.43.1',
+                          border: OutlineInputBorder(),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 2,
-                        child: TextField(
-                          controller: _portCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Port',
-                            border: OutlineInputBorder(),
-                          ),
+                      );
+                      final portField = TextField(
+                        controller: _portCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Port',
+                          border: OutlineInputBorder(),
                         ),
-                      ),
-                    ],
+                      );
+                      if (stackVert) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [ipField, const SizedBox(height: 10), portField],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(flex: 3, child: ipField),
+                          const SizedBox(width: 8),
+                          Expanded(flex: 2, child: portField),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 10),
                   TextField(
@@ -248,6 +272,7 @@ class _PairingScreenState extends State<PairingScreen> {
               ),
             ),
           ),
+        ),
         ),
       ),
     );

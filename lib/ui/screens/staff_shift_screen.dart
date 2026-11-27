@@ -59,12 +59,19 @@ class _StaffShiftScreenState extends State<StaffShiftScreen> {
           ),
         ],
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 500),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
+      body: SafeArea(
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + MediaQuery.viewInsetsOf(context).bottom,
+              ),
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Container(
@@ -97,6 +104,7 @@ class _StaffShiftScreenState extends State<StaffShiftScreen> {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -115,9 +123,11 @@ class _StaffShiftScreenState extends State<StaffShiftScreen> {
             children: [
               const Icon(Icons.lock_open_rounded, color: AppTheme.success),
               const SizedBox(width: 8),
-              Text(
-                'Shift Aktif #${shift.id} Terbuka',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              Expanded(
+                child: Text(
+                  'Shift Aktif #${shift.id} Terbuka',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
               ),
             ],
           ),
@@ -203,9 +213,11 @@ class _StaffShiftScreenState extends State<StaffShiftScreen> {
             children: [
               Icon(Icons.lock_clock_rounded, color: AppTheme.warning),
               SizedBox(width: 8),
-              Text(
-                'Belum Ada Shift Terbuka',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              Expanded(
+                child: Text(
+                  'Belum Ada Shift Terbuka',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
               ),
             ],
           ),
@@ -218,6 +230,7 @@ class _StaffShiftScreenState extends State<StaffShiftScreen> {
           else ...[
             DropdownButtonFormField<int>(
               initialValue: _selectedRegId ?? authorizedRegs.first.id,
+              isExpanded: true,
               decoration: const InputDecoration(
                 labelText: 'Laci Kas yang Ditugaskan',
                 border: OutlineInputBorder(),
@@ -225,7 +238,11 @@ class _StaffShiftScreenState extends State<StaffShiftScreen> {
               items: authorizedRegs
                   .map((r) => DropdownMenuItem<int>(
                         value: r.id,
-                        child: Text('${r.registerCode} — ${r.name}'),
+                        child: Text(
+                          '${r.registerCode} — ${r.name}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ))
                   .toList(),
               onChanged: (v) => setState(() => _selectedRegId = v),

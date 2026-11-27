@@ -204,6 +204,9 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+      ),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
@@ -248,22 +251,32 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
                 ],
               ),
               const Divider(height: 18),
-              _unitTile(
-                ctx: ctx,
-                ctrl: ctrl,
-                product: prod,
-                unit: null,
-                label: '${prod.baseUnit} (Satuan Dasar)',
-                price: prod.sellingPrice,
-              ),
-              ...prod.units.map(
-                (u) => _unitTile(
-                  ctx: ctx,
-                  ctrl: ctrl,
-                  product: prod,
-                  unit: u,
-                  label: '${u.unitName} (Isi ${CurrencyHelper.formatNumber(u.conversionFactor)} ${prod.baseUnit})',
-                  price: u.sellingPrice,
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _unitTile(
+                        ctx: ctx,
+                        ctrl: ctrl,
+                        product: prod,
+                        unit: null,
+                        label: '${prod.baseUnit} (Satuan Dasar)',
+                        price: prod.sellingPrice,
+                      ),
+                      ...prod.units.map(
+                        (u) => _unitTile(
+                          ctx: ctx,
+                          ctrl: ctrl,
+                          product: prod,
+                          unit: u,
+                          label: '${u.unitName} (Isi ${CurrencyHelper.formatNumber(u.conversionFactor)} ${prod.baseUnit})',
+                          price: u.sellingPrice,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -506,32 +519,35 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
 
   PreferredSizeWidget _buildCompactAppBar(StaffSessionController ctrl, bool compactPhone) {
     final shift = ctrl.currentShift;
+    final veryCompact = MediaQuery.sizeOf(context).width < 350;
     return AppBar(
-      titleSpacing: 12,
+      titleSpacing: veryCompact ? 8 : 12,
       title: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(9),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(7),
-              child: Image.asset(
-                'assets/branding/kasirtoko_staff_logo.png',
-                width: 26,
-                height: 26,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const Icon(
-                  Icons.point_of_sale_rounded,
-                  color: AppTheme.primaryGreen,
-                  size: 22,
+          if (!veryCompact) ...[
+            Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(7),
+                child: Image.asset(
+                  'assets/branding/kasirtoko_staff_logo.png',
+                  width: 26,
+                  height: 26,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const Icon(
+                    Icons.point_of_sale_rounded,
+                    color: AppTheme.primaryGreen,
+                    size: 22,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 9),
+            const SizedBox(width: 9),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -594,7 +610,12 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
         ),
         IconButton(
           tooltip: 'Struk & Koneksi',
-          icon: const Icon(Icons.receipt_long_rounded),
+          padding: EdgeInsets.all(veryCompact ? 6 : 8),
+          constraints: BoxConstraints(
+            minWidth: veryCompact ? 34 : 44,
+            minHeight: veryCompact ? 34 : 44,
+          ),
+          icon: const Icon(Icons.receipt_long_rounded, size: 21),
           onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(
@@ -762,7 +783,7 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
     required List<StaffProduct> filteredProducts,
     required bool compactPhone,
   }) {
-    final textScale = MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.35);
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.8);
 
     return Column(
       children: [
@@ -815,7 +836,7 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
 
         // Horizontal Category Chips
         SizedBox(
-          height: 38,
+          height: 28.0 + 14.0 * textScale,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -891,7 +912,7 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
               : LayoutBuilder(
                   builder: (context, constraints) {
                     final cols = AppBreakpoints.productGridCount(constraints.maxWidth);
-                    final cardExtent = ((compactPhone ? 158.0 : 164.0) * textScale);
+                    final cardExtent = 74.0 + (compactPhone ? 94.0 : 98.0) * textScale;
 
                     return RefreshIndicator(
                       onRefresh: () => ctrl.syncCatalogIncremental(),
@@ -1442,6 +1463,10 @@ class _StaffCartPane extends StatelessWidget {
     if (!context.mounted) return;
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+      ),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -1499,6 +1524,10 @@ class _StaffCartPane extends StatelessWidget {
     final activePromos = ctrl.promos.where((p) => p.isRunning).toList();
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+      ),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -1508,38 +1537,48 @@ class _StaffCartPane extends StatelessWidget {
             children: [
               const Text('Pilih Promo Aktif', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const Divider(),
-              ListTile(
-                dense: true,
-                title: const Text('Tanpa Promo'),
-                trailing: ctrl.selectedPromo == null
-                    ? const Icon(Icons.check_rounded, color: AppTheme.primaryGreen)
-                    : null,
-                onTap: () async {
-                  await ctrl.setSelectedPromo(null);
-                  if (ctx.mounted) Navigator.pop(ctx);
-                },
-              ),
-              if (activePromos.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text('Belum ada promo aktif.', style: TextStyle(color: AppTheme.textMuted)),
-                )
-              else
-                ...activePromos.map(
-                  (p) => ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.local_offer_rounded, color: AppTheme.accentOrange),
-                    title: Text(p.name),
-                    subtitle: Text(p.promoType),
-                    trailing: ctrl.selectedPromo?.id == p.id
-                        ? const Icon(Icons.check_rounded, color: AppTheme.primaryGreen)
-                        : null,
-                    onTap: () async {
-                      await ctrl.setSelectedPromo(p);
-                      if (ctx.mounted) Navigator.pop(ctx);
-                    },
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ListTile(
+                        dense: true,
+                        title: const Text('Tanpa Promo'),
+                        trailing: ctrl.selectedPromo == null
+                            ? const Icon(Icons.check_rounded, color: AppTheme.primaryGreen)
+                            : null,
+                        onTap: () async {
+                          await ctrl.setSelectedPromo(null);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                        },
+                      ),
+                      if (activePromos.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Text('Belum ada promo aktif.', style: TextStyle(color: AppTheme.textMuted)),
+                        )
+                      else
+                        ...activePromos.map(
+                          (p) => ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.local_offer_rounded, color: AppTheme.accentOrange),
+                            title: Text(p.name),
+                            subtitle: Text(p.promoType),
+                            trailing: ctrl.selectedPromo?.id == p.id
+                                ? const Icon(Icons.check_rounded, color: AppTheme.primaryGreen)
+                                : null,
+                            onTap: () async {
+                              await ctrl.setSelectedPromo(p);
+                              if (ctx.mounted) Navigator.pop(ctx);
+                            },
+                          ),
+                        ),
+                    ],
                   ),
                 ),
+              ),
             ],
           ),
         ),
@@ -1566,6 +1605,10 @@ class _StaffCartPane extends StatelessWidget {
   Future<void> _showHeldOrders(BuildContext context, StaffSessionController ctrl) async {
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+      ),
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -1881,13 +1924,22 @@ class _StaffCartPane extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                      Text(
-                        CurrencyHelper.format(ctrl.grandTotal),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 19,
-                          color: AppTheme.primaryGreen,
+                      const Expanded(
+                        child: Text('TOTAL', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            CurrencyHelper.format(ctrl.grandTotal),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 19,
+                              color: AppTheme.primaryGreen,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -1982,8 +2034,12 @@ class _NumberInputDialogState extends State<_NumberInputDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       title: Text(widget.title),
-      content: TextField(
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: SingleChildScrollView(
+          child: TextField(
         controller: _ctrl,
         autofocus: true,
         keyboardType: TextInputType.numberWithOptions(decimal: widget.allowDecimal),
@@ -1993,6 +2049,8 @@ class _NumberInputDialogState extends State<_NumberInputDialog> {
           hintText: widget.hintText,
         ),
         onSubmitted: (v) => Navigator.pop(context, v.trim()),
+          ),
+        ),
       ),
       actions: [
         TextButton(

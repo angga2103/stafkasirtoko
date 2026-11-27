@@ -79,10 +79,15 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final ctrl = Provider.of<StaffSessionController>(context);
+    final compact = MediaQuery.sizeOf(context).width < 360;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('${ctrl.storeName} • Login Kasir'),
+        title: Text(
+          '${ctrl.storeName} • Login Kasir',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           IconButton(
             tooltip: 'Muat Ulang',
@@ -90,6 +95,9 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
             icon: const Icon(Icons.refresh_rounded),
           ),
           TextButton.icon(
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 10),
+            ),
             onPressed: () async {
               final confirm = await showDialog<bool>(
                 context: context,
@@ -117,11 +125,18 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
           ),
         ],
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
+      body: SafeArea(
+        top: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                16,
+                16,
+                16 + MediaQuery.viewInsetsOf(context).bottom,
+              ),
             child: Container(
               padding: const EdgeInsets.all(18),
               decoration: AppTheme.cardDecoration(),
@@ -159,6 +174,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                   else ...[
                     DropdownButtonFormField<int>(
                       initialValue: _selected?.id,
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Pilih Akun Kasir',
                         border: OutlineInputBorder(),
@@ -166,7 +182,11 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                       items: _cashiers
                           .map((c) => DropdownMenuItem<int>(
                                 value: c.id,
-                                child: Text('${c.name} (${c.roleLabel.isNotEmpty ? c.roleLabel : c.role})'),
+                                child: Text(
+                                  '${c.name} (${c.roleLabel.isNotEmpty ? c.roleLabel : c.role})',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ))
                           .toList(),
                       onChanged: (id) {
@@ -177,9 +197,11 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                       },
                     ),
                     const SizedBox(height: 18),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(6, (i) {
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(6, (i) {
                         final filled = i < _pin.length;
                         return Container(
                           margin: const EdgeInsets.symmetric(horizontal: 6),
@@ -195,6 +217,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                           ),
                         );
                       }),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     _buildKeypad(),
@@ -215,6 +238,7 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
             ),
           ),
         ),
+        ),
       ),
     );
   }
@@ -226,36 +250,44 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
       ['7', '8', '9'],
       ['C', '0', '<'],
     ];
-    return Column(
-      children: rows
-          .map((r) => Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: r.map((k) {
-                  return Padding(
-                    padding: const EdgeInsets.all(5),
-                    child: SizedBox(
-                      width: 72,
-                      height: 52,
-                      child: OutlinedButton(
-                        onPressed: () {
-                          if (k == 'C') {
-                            setState(() => _pin = '');
-                          } else if (k == '<') {
-                            _backspace();
-                          } else {
-                            _appendDigit(k);
-                          }
-                        },
-                        child: Text(
-                          k,
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 280),
+        child: Column(
+          children: rows
+              .map((r) => Row(
+                    children: r.map((k) {
+                      return Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 50),
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+                              ),
+                              onPressed: () {
+                                if (k == 'C') {
+                                  setState(() => _pin = '');
+                                } else if (k == '<') {
+                                  _backspace();
+                                } else {
+                                  _appendDigit(k);
+                                }
+                              },
+                              child: Text(
+                                k,
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ))
-          .toList(),
+                      );
+                    }).toList(),
+                  ))
+              .toList(),
+        ),
+      ),
     );
   }
 }
