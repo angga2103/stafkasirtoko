@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +13,10 @@ class StaffCredentials {
   final String tlsCertSha256;
   final String? nextCertSha256;
   final String serverUrl;
+  final String serverId;
+  final String primaryServerUrl;
+  final String backupServerUrl;
+  final List<String> candidateServerUrls;
   final String? sessionToken;
   final String? sessionExpiresAt;
 
@@ -25,6 +30,10 @@ class StaffCredentials {
     required this.tlsCertSha256,
     this.nextCertSha256,
     required this.serverUrl,
+    this.serverId = '',
+    this.primaryServerUrl = '',
+    this.backupServerUrl = '',
+    this.candidateServerUrls = const [],
     this.sessionToken,
     this.sessionExpiresAt,
   });
@@ -47,6 +56,10 @@ class StaffCredentials {
     String? nextCertSha256,
     bool clearNextCert = false,
     String? serverUrl,
+    String? serverId,
+    String? primaryServerUrl,
+    String? backupServerUrl,
+    List<String>? candidateServerUrls,
     String? sessionToken,
     bool clearSession = false,
     String? sessionExpiresAt,
@@ -61,6 +74,10 @@ class StaffCredentials {
         tlsCertSha256: tlsCertSha256 ?? this.tlsCertSha256,
         nextCertSha256: clearNextCert ? null : (nextCertSha256 ?? this.nextCertSha256),
         serverUrl: serverUrl ?? this.serverUrl,
+        serverId: serverId ?? this.serverId,
+        primaryServerUrl: primaryServerUrl ?? this.primaryServerUrl,
+        backupServerUrl: backupServerUrl ?? this.backupServerUrl,
+        candidateServerUrls: candidateServerUrls ?? this.candidateServerUrls,
         sessionToken: clearSession ? null : (sessionToken ?? this.sessionToken),
         sessionExpiresAt: clearSession ? null : (sessionExpiresAt ?? this.sessionExpiresAt),
       );
@@ -82,6 +99,10 @@ abstract class SecureCredentialStore {
   static const _kTlsCertSha = 'tls_cert_sha256';
   static const _kNextCertSha = 'next_cert_sha256';
   static const _kServerUrl = 'server_url';
+  static const _kServerId = 'server_id';
+  static const _kPrimaryServerUrl = 'primary_server_url';
+  static const _kBackupServerUrl = 'backup_server_url';
+  static const _kCandidateServerUrls = 'candidate_server_urls';
   static const _kSessionToken = 'cashier_session_token';
   static const _kSessionExp = 'cashier_session_expires_at';
 
@@ -94,6 +115,26 @@ abstract class SecureCredentialStore {
     await put(_kDeviceSecret, creds.deviceSecret);
     await put(_kTlsCertSha, creds.tlsCertSha256);
     await put(_kServerUrl, creds.serverUrl);
+    if (creds.serverId.isNotEmpty) {
+      await put(_kServerId, creds.serverId);
+    } else {
+      await delete(_kServerId);
+    }
+    if (creds.primaryServerUrl.isNotEmpty) {
+      await put(_kPrimaryServerUrl, creds.primaryServerUrl);
+    } else {
+      await delete(_kPrimaryServerUrl);
+    }
+    if (creds.backupServerUrl.isNotEmpty) {
+      await put(_kBackupServerUrl, creds.backupServerUrl);
+    } else {
+      await delete(_kBackupServerUrl);
+    }
+    if (creds.candidateServerUrls.isNotEmpty) {
+      await put(_kCandidateServerUrls, jsonEncode(creds.candidateServerUrls));
+    } else {
+      await delete(_kCandidateServerUrls);
+    }
     if (creds.nextCertSha256 != null && creds.nextCertSha256!.isNotEmpty) {
       await put(_kNextCertSha, creds.nextCertSha256!);
     } else {
@@ -117,6 +158,16 @@ abstract class SecureCredentialStore {
     if (tid.isEmpty || tok.isEmpty || sec.isEmpty || cert.isEmpty || url.isEmpty) {
       return null;
     }
+    List<String> candidates = const [];
+    final rawCandidates = await get(_kCandidateServerUrls);
+    if (rawCandidates != null && rawCandidates.isNotEmpty) {
+      try {
+        candidates = (jsonDecode(rawCandidates) as List<dynamic>)
+            .map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+      } catch (_) {}
+    }
     return StaffCredentials(
       terminalId: tid,
       terminalCode: await get(_kTerminalCode) ?? tid,
@@ -127,6 +178,10 @@ abstract class SecureCredentialStore {
       tlsCertSha256: cert,
       nextCertSha256: await get(_kNextCertSha),
       serverUrl: url,
+      serverId: await get(_kServerId) ?? '',
+      primaryServerUrl: await get(_kPrimaryServerUrl) ?? '',
+      backupServerUrl: await get(_kBackupServerUrl) ?? '',
+      candidateServerUrls: candidates,
       sessionToken: await get(_kSessionToken),
       sessionExpiresAt: await get(_kSessionExp),
     );

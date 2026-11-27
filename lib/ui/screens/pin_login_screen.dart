@@ -137,107 +137,141 @@ class _PinLoginScreenState extends State<PinLoginScreen> {
                 16,
                 16 + MediaQuery.viewInsetsOf(context).bottom,
               ),
-            child: Container(
-              padding: const EdgeInsets.all(18),
-              decoration: AppTheme.cardDecoration(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: Image.asset(
-                        'assets/branding/kasirtoko_staff_logo.png',
-                        width: 52,
-                        height: 52,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) =>
-                            const Icon(Icons.point_of_sale_rounded, size: 44, color: AppTheme.primaryGreen),
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: AppTheme.cardDecoration(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Image.asset(
+                          'assets/branding/kasirtoko_staff_logo.png',
+                          width: 52,
+                          height: 52,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) =>
+                              const Icon(Icons.point_of_sale_rounded, size: 44, color: AppTheme.primaryGreen),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Terminal: ${ctrl.credentials?.terminalName ?? ""} (${ctrl.credentials?.terminalId ?? ""})',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
-                  ),
-                  const SizedBox(height: 10),
-                  if (_loadingCashiers)
-                    const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
-                  else if (_loadError != null) ...[
-                    Text(_loadError!, style: const TextStyle(color: AppTheme.accentRed, fontSize: 12.5)),
                     const SizedBox(height: 10),
-                    ElevatedButton(onPressed: _loadCashiers, child: const Text('Coba Hubungkan Ulang')),
-                  ] else if (_cashiers.isEmpty)
-                    const Text('Tidak ada akun kasir aktif dengan izin POS di Admin.')
-                  else ...[
-                    DropdownButtonFormField<int>(
-                      initialValue: _selected?.id,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Pilih Akun Kasir',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: _cashiers
-                          .map((c) => DropdownMenuItem<int>(
-                                value: c.id,
-                                child: Text(
-                                  '${c.name} (${c.roleLabel.isNotEmpty ? c.roleLabel : c.role})',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                    Text(
+                      'Terminal: ${ctrl.credentials?.terminalName ?? ""} (${ctrl.credentials?.terminalId ?? ""})',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Status: ${ctrl.networkStatus.displayLabel}${ctrl.serverId.isNotEmpty ? " • Server ID: ${ctrl.serverId}" : ""}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+                    ),
+                    if (ctrl.lastError != null && ctrl.lastError!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentRedSoft,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.red.shade200),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.error_outline_rounded, size: 18, color: AppTheme.accentRed),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                ctrl.lastError!,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.accentRed,
+                                  fontWeight: FontWeight.w600,
                                 ),
-                              ))
-                          .toList(),
-                      onChanged: (id) {
-                        setState(() {
-                          _selected = _cashiers.where((c) => c.id == id).firstOrNull;
-                          _pin = '';
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 18),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(6, (i) {
-                        final filled = i < _pin.length;
-                        return Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 6),
-                          width: 16,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: filled ? AppTheme.primaryGreen : Colors.transparent,
-                            border: Border.all(
-                              color: filled ? AppTheme.primaryGreen : Colors.grey.shade400,
-                              width: 1.5,
+                              ),
                             ),
-                          ),
-                        );
-                      }),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildKeypad(),
-                    const SizedBox(height: 14),
-                    ElevatedButton(
-                      onPressed: _submitting || _pin.length < 4 ? null : _submitPin,
-                      child: _submitting
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                            )
-                          : const Text('Masuk Kasir'),
-                    ),
+                    ],
+                    const SizedBox(height: 10),
+                    if (_loadingCashiers)
+                      const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()))
+                    else if (_loadError != null) ...[
+                      Text(_loadError!, style: const TextStyle(color: AppTheme.accentRed, fontSize: 12.5)),
+                      const SizedBox(height: 10),
+                      ElevatedButton(onPressed: _loadCashiers, child: const Text('Coba Hubungkan Ulang')),
+                    ] else if (_cashiers.isEmpty)
+                      const Text('Tidak ada akun kasir aktif dengan izin POS di Admin.')
+                    else ...[
+                      DropdownButtonFormField<int>(
+                        initialValue: _selected?.id,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Pilih Akun Kasir',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: _cashiers
+                            .map((c) => DropdownMenuItem<int>(
+                                  value: c.id,
+                                  child: Text(
+                                    '${c.name} (${c.roleLabel.isNotEmpty ? c.roleLabel : c.role})',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ))
+                            .toList(),
+                        onChanged: (id) {
+                          setState(() {
+                            _selected = _cashiers.where((c) => c.id == id).firstOrNull;
+                            _pin = '';
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 18),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(6, (i) {
+                            final filled = i < _pin.length;
+                            return Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 6),
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: filled ? AppTheme.primaryGreen : Colors.transparent,
+                                border: Border.all(
+                                  color: filled ? AppTheme.primaryGreen : Colors.grey.shade400,
+                                  width: 1.5,
+                                ),
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildKeypad(),
+                      const SizedBox(height: 14),
+                      ElevatedButton(
+                        onPressed: _submitting || _pin.length < 4 ? null : _submitPin,
+                        child: _submitting
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                              )
+                            : const Text('Masuk Kasir'),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
-        ),
         ),
       ),
     );

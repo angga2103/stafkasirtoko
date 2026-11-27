@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/network/lan_discovery_client.dart';
 import '../../core/network/lan_http_client.dart';
 import '../../core/network/lan_ws_client.dart';
 import '../../core/security/request_signer.dart';
@@ -20,11 +22,41 @@ enum TerminalConnectionState {
   revoked,
 }
 
+enum StaffNetworkStatus {
+  routerOnline,
+  hotspotBackup,
+  connecting,
+  reconnecting,
+  offline,
+  serverUnavailable,
+}
+
+extension StaffNetworkStatusLabel on StaffNetworkStatus {
+  String get displayLabel {
+    switch (this) {
+      case StaffNetworkStatus.routerOnline:
+        return 'Router Online';
+      case StaffNetworkStatus.hotspotBackup:
+        return 'Hotspot Cadangan';
+      case StaffNetworkStatus.connecting:
+        return 'Connecting';
+      case StaffNetworkStatus.reconnecting:
+        return 'Reconnecting';
+      case StaffNetworkStatus.offline:
+        return 'Offline';
+      case StaffNetworkStatus.serverUnavailable:
+        return 'Server Tidak Tersedia';
+    }
+  }
+}
+
 class StaffSessionController extends ChangeNotifier {
   final SecureCredentialStore _credStore;
   final StaffLocalDb _localDb;
   final LanHttpClient httpClient;
   late final LanWsClient wsClient;
+  final LanDiscoveryClient _discoveryClient;
+  final bool enableLanDiscovery;
   final Uuid _uuid = const Uuid();
 
   StaffCredentials? _credentials;
@@ -50,6 +82,8 @@ class StaffSessionController extends ChangeNotifier {
   bool _allowManualOpenDrawer = false;
   bool _autoPrintStaffTransactions = true;
   int _lastSyncVersion = 0;
+  String _activeNetworkMode = 'primary_router';
+  List<Map<String, dynamic>> _serverEndpoints = const [];
 
   int? _customerId;
   String _customerName = 'Pelanggan Umum';
@@ -63,6 +97,8 @@ class StaffSessionController extends ChangeNotifier {
   bool _wsConnected = false;
   bool _adminReachable = false;
   bool _isConnecting = false;
+  bool _isReconnecting = false;
+  bool _serverUnavailableFlag = false;
   bool _isCheckingOut = false;
   bool _isSyncing = false;
   bool _revokedFlag = false;
@@ -77,8 +113,11 @@ class StaffSessionController extends ChangeNotifier {
     StaffLocalDb? localDb,
     LanHttpClient? httpClient,
     LanWsClient? wsClient,
+    LanDiscoveryClient? discoveryClient,
+    this.enableLanDiscovery = true,
   })  : _credStore = credentialStore ?? AndroidKeystoreCredentialStore(),
         _localDb = localDb ?? StaffLocalDb.instance,
+        _discoveryClient = discoveryClient ?? LanDiscoveryClient(),
         httpClient = httpClient ??
             LanHttpClient(
               credentialStore: credentialStore ?? AndroidKeystoreCredentialStore(),
@@ -88,6 +127,7 @@ class StaffSessionController extends ChangeNotifier {
           credentialStore: _credStore,
           httpClient: this.httpClient,
         );
+    this.wsClient.onReconnectProbeNeeded = _probeBestEndpointForWsReconnect;
     _attachWsListeners();
   }
 
@@ -115,6 +155,9 @@ class StaffSessionController extends ChangeNotifier {
   bool get allowManualOpenDrawer => _allowManualOpenDrawer;
   bool get autoPrintStaffTransactions => _autoPrintStaffTransactions;
   int get lastSyncVersion => _lastSyncVersion;
+  String get serverId => _credentials?.serverId ?? '';
+  String get activeNetworkMode => _activeNetworkMode;
+  List<Map<String, dynamic>> get serverEndpoints => _serverEndpoints;
 
   int? get customerId => _customerId;
   String get customerName => _customerName;
@@ -128,11 +171,25 @@ class StaffSessionController extends ChangeNotifier {
   bool get wsConnected => _wsConnected;
   bool get adminReachable => _adminReachable;
   bool get isConnecting => _isConnecting || wsClient.isConnecting;
-  bool get isReconnecting => !_adminReachable && wsClient.isReconnecting;
+  bool get isReconnecting => _isReconnecting || (!_adminReachable && wsClient.isReconnecting);
+  bool get serverUnavailable => _serverUnavailableFlag;
   bool get isCheckingOut => _isCheckingOut;
   bool get isSyncing => _isSyncing;
   String? get statusMessage => _statusMessage;
   String? get lastError => _lastError;
+
+  StaffNetworkStatus get networkStatus {
+    if (isConnecting) return StaffNetworkStatus.connecting;
+    if (_adminReachable || _wsConnected) {
+      return _activeNetworkMode == 'backup_hotspot'
+          ? StaffNetworkStatus.hotspotBackup
+          : StaffNetworkStatus.routerOnline;
+    }
+    if (isReconnecting) return StaffNetworkStatus.reconnecting;
+    return _serverUnavailableFlag
+        ? StaffNetworkStatus.serverUnavailable
+        : StaffNetworkStatus.offline;
+  }
 
   TerminalConnectionState get connectionState {
     if (_revokedFlag) return TerminalConnectionState.revoked;
@@ -245,9 +302,16 @@ class StaffSessionController extends ChangeNotifier {
 
   void _attachWsListeners() {
     _wsStateSub = wsClient.connectionStates.listen((connected) {
+      final wasConnected = _wsConnected;
       _wsConnected = connected;
       if (connected) {
         _adminReachable = true;
+        _isReconnecting = false;
+        _serverUnavailableFlag = false;
+      } else if (wasConnected) {
+        _adminReachable = false;
+        _isReconnecting = wsClient.isReconnecting;
+        _serverUnavailableFlag = true;
       }
       notifyListeners();
     });
@@ -257,6 +321,9 @@ class StaffSessionController extends ChangeNotifier {
         case 'hello':
           _adminReachable = true;
           _wsConnected = true;
+          _isReconnecting = false;
+          _serverUnavailableFlag = false;
+          unawaited(_absorbServerTopology(evt.data));
           final remoteVer = (evt.data['sync_version'] as num?)?.toInt() ?? 0;
           if (remoteVer > _lastSyncVersion) {
             unawaited(syncCatalogIncremental());
@@ -266,6 +333,7 @@ class StaffSessionController extends ChangeNotifier {
           break;
         case 'pong':
           _adminReachable = true;
+          unawaited(_absorbServerTopology(evt.data));
           final remoteVer = (evt.data['sync_version'] as num?)?.toInt() ?? 0;
           if (remoteVer > _lastSyncVersion) {
             unawaited(syncCatalogIncremental());
@@ -301,6 +369,7 @@ class StaffSessionController extends ChangeNotifier {
         case 'server_stopping':
           _adminReachable = false;
           _wsConnected = false;
+          _serverUnavailableFlag = true;
           _statusMessage = 'Server POS Admin dimatikan.';
           notifyListeners();
           break;
@@ -308,7 +377,59 @@ class StaffSessionController extends ChangeNotifier {
     });
   }
 
-  // ==================== PAIRING & CONNECTIVITY ====================
+  Future<void> _absorbServerTopology(Map<String, dynamic> payload) async {
+    if (_credentials == null) return;
+    final srvId = (payload['server_id'] ?? '').toString().trim();
+    final mode = (payload['network_mode'] ?? '').toString().trim();
+    if (mode.isNotEmpty) {
+      _activeNetworkMode = mode;
+    }
+
+    String primaryUrl = _credentials!.primaryServerUrl;
+    String backupUrl = _credentials!.backupServerUrl;
+    final candidates = <String>{
+      _credentials!.serverUrl,
+      if (primaryUrl.isNotEmpty) primaryUrl,
+      if (backupUrl.isNotEmpty) backupUrl,
+      ..._credentials!.candidateServerUrls,
+    };
+
+    final rawEndpoints = payload['endpoints'];
+    if (rawEndpoints is List) {
+      final parsed = <Map<String, dynamic>>[];
+      for (final raw in rawEndpoints) {
+        if (raw is! Map) continue;
+        final map = Map<String, dynamic>.from(raw);
+        parsed.add(map);
+        final url = (map['base_url'] ?? '').toString().trim();
+        final pType = (map['profile_type'] ?? '').toString().trim();
+        if (url.isNotEmpty) {
+          candidates.add(url);
+          if (pType == 'primary_router') primaryUrl = url;
+          if (pType == 'backup_hotspot') backupUrl = url;
+        }
+      }
+      _serverEndpoints = parsed;
+    }
+
+    final cleanCandidates = candidates.where((u) => u.isNotEmpty).toList();
+    final changed = (srvId.isNotEmpty && srvId != _credentials!.serverId) ||
+        primaryUrl != _credentials!.primaryServerUrl ||
+        backupUrl != _credentials!.backupServerUrl ||
+        cleanCandidates.length != _credentials!.candidateServerUrls.length;
+
+    if (changed) {
+      _credentials = _credentials!.copyWith(
+        serverId: srvId.isNotEmpty ? srvId : _credentials!.serverId,
+        primaryServerUrl: primaryUrl,
+        backupServerUrl: backupUrl,
+        candidateServerUrls: cleanCandidates,
+      );
+      await _credStore.saveCredentials(_credentials!);
+    }
+  }
+
+  // ==================== PAIRING & FAILOVER CONNECTIVITY ====================
 
   Future<bool> pairUsingQrOrManual({
     required String host,
@@ -317,6 +438,8 @@ class StaffSessionController extends ChangeNotifier {
     required String deviceName,
     String? fullCertSha256,
     String? shortPin,
+    List<String> extraCandidateUrls = const [],
+    String? expectedServerId,
   }) async {
     _lastError = null;
     _revokedFlag = false;
@@ -324,10 +447,11 @@ class StaffSessionController extends ChangeNotifier {
     final baseUrl = 'https://${host.trim()}:$port';
 
     try {
-      final health = await httpClient.checkHealth(
+      final health = await httpClient.checkHealthVerified(
         baseUrl: baseUrl,
         expectedSha256: fullCertSha256,
         expectedShortPin: shortPin,
+        expectedServerId: expectedServerId,
       );
       final deviceUuid = _credentials?.deviceUuid.isNotEmpty == true
           ? _credentials!.deviceUuid
@@ -345,6 +469,26 @@ class StaffSessionController extends ChangeNotifier {
       );
 
       final certSha = (data['cert_sha256'] ?? fullCertSha256 ?? '').toString().toLowerCase();
+      final serverIdVal = (data['server_id'] ?? health['server_id'] ?? expectedServerId ?? '').toString().trim();
+
+      String primaryUrl = '';
+      String backupUrl = '';
+      final candidates = <String>{baseUrl, ...extraCandidateUrls};
+      for (final source in [data['endpoints'], health['endpoints']]) {
+        if (source is List) {
+          for (final e in source) {
+            if (e is! Map) continue;
+            final u = (e['base_url'] ?? '').toString().trim();
+            final pType = (e['profile_type'] ?? '').toString().trim();
+            if (u.isNotEmpty) {
+              candidates.add(u);
+              if (pType == 'primary_router') primaryUrl = u;
+              if (pType == 'backup_hotspot') backupUrl = u;
+            }
+          }
+        }
+      }
+
       final nextCreds = StaffCredentials(
         terminalId: (data['terminal_id'] ?? '').toString(),
         terminalCode: (data['terminal_code'] ?? data['terminal_id'] ?? '').toString(),
@@ -354,10 +498,16 @@ class StaffSessionController extends ChangeNotifier {
         deviceSecret: (data['device_secret'] ?? '').toString(),
         tlsCertSha256: certSha,
         serverUrl: baseUrl,
+        serverId: serverIdVal,
+        primaryServerUrl: primaryUrl,
+        backupServerUrl: backupUrl,
+        candidateServerUrls: candidates.where((u) => u.isNotEmpty).toList(),
       );
       await _credStore.saveCredentials(nextCreds);
       _credentials = nextCreds;
       _adminReachable = true;
+      _serverUnavailableFlag = false;
+      _activeNetworkMode = (data['network_mode'] ?? health['network_mode'] ?? 'primary_router').toString();
       _storeName = (data['store_name'] ?? health['store_name'] ?? _storeName).toString();
       _drawerMode = (data['drawer_mode'] ?? 'SHARED_DRAWER').toString();
       _allowAutoOpenDrawer = data['allow_auto_open_drawer'] == true;
@@ -374,6 +524,7 @@ class StaffSessionController extends ChangeNotifier {
         'last_sync_version': 0,
       });
 
+      await _absorbServerTopology(data);
       notifyListeners();
       return true;
     } catch (e) {
@@ -383,16 +534,264 @@ class StaffSessionController extends ChangeNotifier {
     }
   }
 
-  Future<bool> checkConnectivityAndRestoreSession() async {
+  Future<bool> pairFromQrPayload(String rawQrJson, {required String deviceName}) async {
+    try {
+      final map = jsonDecode(rawQrJson.trim()) as Map<String, dynamic>;
+      final port = (map['port'] as num?)?.toInt() ?? 8443;
+      final ips = ((map['ips'] as List<dynamic>?) ?? const ['127.0.0.1'])
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+      final candidateUrls = <String>[
+        for (final ip in ips) 'https://$ip:$port',
+        if (map['endpoints'] is List)
+          for (final e in (map['endpoints'] as List<dynamic>))
+            if (e is Map && (e['base_url'] ?? '').toString().trim().isNotEmpty)
+              (e['base_url'] ?? '').toString().trim(),
+      ];
+      final code = (map['pairing_code'] ?? '').toString();
+      final certSha = (map['cert_sha256'] ?? '').toString();
+      final shortPin = (map['short_pin'] ?? '').toString();
+      final expectedServerId = (map['server_id'] ?? '').toString().trim();
+      for (final rawUrl in candidateUrls.toSet()) {
+        final uri = Uri.tryParse(rawUrl);
+        if (uri == null || uri.host.isEmpty) continue;
+        final ok = await pairUsingQrOrManual(
+          host: uri.host,
+          port: uri.hasPort ? uri.port : port,
+          pairingCode: code,
+          deviceName: deviceName,
+          fullCertSha256: certSha.isNotEmpty ? certSha : null,
+          shortPin: shortPin.isNotEmpty ? shortPin : null,
+          extraCandidateUrls: candidateUrls,
+          expectedServerId: expectedServerId.isNotEmpty ? expectedServerId : null,
+        );
+        if (ok) return true;
+      }
+      return false;
+    } catch (e) {
+      _lastError = 'Format QR Pairing tidak valid: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Manually updates the Admin IP/Port endpoint without clearing pairing or session,
+  /// while still strictly enforcing TLS SHA-256 pinning and persistent `server_id`.
+  Future<bool> updateServerEndpointManually({
+    required String host,
+    int? port,
+  }) async {
+    if (_credentials == null || !_credentials!.isPaired) return false;
+    final cleanHost = host.trim();
+    if (cleanHost.isEmpty) {
+      _lastError = 'Alamat IP Server Admin wajib diisi.';
+      notifyListeners();
+      return false;
+    }
+    return checkConnectivityAndRestoreSession(
+      manualHostOverride: cleanHost,
+      manualPortOverride: port,
+    );
+  }
+
+  Future<void> _probeBestEndpointForWsReconnect() async {
+    if (_credentials == null || !_credentials!.isPaired) return;
+    await _discoverAndSelectReachableEndpoint();
+  }
+
+  Future<({String url, Map<String, dynamic> health})?> _discoverAndSelectReachableEndpoint({
+    String? manualHostOverride,
+    int? manualPortOverride,
+  }) async {
+    final creds = _credentials;
+    if (creds == null || !creds.isPaired) return null;
+
+    httpClient.setPinnedFingerprints(
+      primarySha256: creds.tlsCertSha256,
+      nextSha256: creds.nextCertSha256,
+    );
+    final hasRotatedBackupCert =
+        creds.nextCertSha256 != null && creds.nextCertSha256!.isNotEmpty;
+    final strictPrimarySha = hasRotatedBackupCert ? null : creds.tlsCertSha256;
+    final baseUri = Uri.tryParse(creds.serverUrl);
+    final defaultPort = baseUri?.hasPort == true ? baseUri!.port : 8443;
+
+    final orderedUrls = <String>[];
+    void addCandidate(String u) {
+      final clean = u.trim().replaceAll(RegExp(r'/+$'), '');
+      if (clean.isNotEmpty && !orderedUrls.contains(clean)) {
+        orderedUrls.add(clean);
+      }
+    }
+
+    if (manualHostOverride != null && manualHostOverride.trim().isNotEmpty) {
+      addCandidate('https://${manualHostOverride.trim()}:${manualPortOverride ?? defaultPort}');
+    }
+    addCandidate(creds.serverUrl);
+    addCandidate(creds.primaryServerUrl);
+    addCandidate(creds.backupServerUrl);
+    for (final c in creds.candidateServerUrls) {
+      addCandidate(c);
+    }
+
+    var sawUnavailableHint = false;
+    Object? lastSecurityOrConnectErr;
+
+    Future<({String url, Map<String, dynamic> health})?> tryUrl(String candidateUrl) async {
+      try {
+        final health = await httpClient.checkHealthVerified(
+          baseUrl: candidateUrl,
+          expectedSha256: strictPrimarySha,
+          expectedServerId: creds.serverId.isNotEmpty ? creds.serverId : null,
+        );
+        return (url: candidateUrl, health: health);
+      } on LanApiException {
+        rethrow;
+      } on LanNetworkException catch (e) {
+        if (e.isCertificateMismatch || e.isServerIdMismatch) {
+          sawUnavailableHint = true;
+          lastSecurityOrConnectErr = e;
+        } else {
+          final lower = e.message.toLowerCase();
+          if (lower.contains('refused') ||
+              lower.contains('timeout') ||
+              lower.contains('ditolak') ||
+              lower.contains('111') ||
+              lower.contains('10061')) {
+            sawUnavailableHint = true;
+          }
+          lastSecurityOrConnectErr ??= e;
+        }
+        return null;
+      } catch (e) {
+        lastSecurityOrConnectErr ??= e;
+        return null;
+      }
+    }
+
+    for (final url in List<String>.from(orderedUrls)) {
+      final hit = await tryUrl(url);
+      if (hit != null) {
+        await _persistWinningEndpoint(hit.url, hit.health);
+        return hit;
+      }
+    }
+
+    final shouldDiscoverLan = enableLanDiscovery &&
+        (creds.serverId.isNotEmpty ||
+            creds.primaryServerUrl.isNotEmpty ||
+            creds.backupServerUrl.isNotEmpty ||
+            creds.candidateServerUrls.any((u) => u != creds.serverUrl));
+
+    if (shouldDiscoverLan && (manualHostOverride == null || manualHostOverride.isEmpty)) {
+      _isReconnecting = true;
+      notifyListeners();
+
+      final udpDiscovered = await _discoveryClient.discover(
+        expectedServerId: creds.serverId,
+      );
+      final dynamicUrls = <String>[];
+      for (final d in udpDiscovered) {
+        for (final u in d.httpsUrls) {
+          if (!orderedUrls.contains(u) && !dynamicUrls.contains(u)) {
+            dynamicUrls.add(u);
+          }
+        }
+      }
+      final gwUrls = await _discoveryClient.inferSubnetGatewayUrls(port: defaultPort);
+      for (final u in gwUrls) {
+        if (!orderedUrls.contains(u) && !dynamicUrls.contains(u)) {
+          dynamicUrls.add(u);
+        }
+      }
+
+      for (final url in dynamicUrls) {
+        final hit = await tryUrl(url);
+        if (hit != null) {
+          await _persistWinningEndpoint(hit.url, hit.health);
+          return hit;
+        }
+      }
+
+      if (!sawUnavailableHint) {
+        try {
+          final intfs = await NetworkInterface.list(
+            type: InternetAddressType.IPv4,
+            includeLoopback: false,
+            includeLinkLocal: false,
+          );
+          if (intfs.any((i) => i.addresses.isNotEmpty)) {
+            sawUnavailableHint = true;
+          }
+        } catch (_) {}
+      }
+    }
+
+    _adminReachable = false;
+    _wsConnected = false;
+    _serverUnavailableFlag = sawUnavailableHint;
+    if (lastSecurityOrConnectErr is LanNetworkException &&
+        ((lastSecurityOrConnectErr as LanNetworkException).isCertificateMismatch ||
+            (lastSecurityOrConnectErr as LanNetworkException).isServerIdMismatch)) {
+      _lastError = lastSecurityOrConnectErr.toString();
+    }
+    return null;
+  }
+
+  Future<void> _persistWinningEndpoint(String winningUrl, Map<String, dynamic> health) async {
+    if (_credentials == null) return;
+    final mode = (health['network_mode'] ?? '').toString().trim();
+    if (mode.isNotEmpty) {
+      _activeNetworkMode = mode;
+    } else if (_credentials!.backupServerUrl.isNotEmpty &&
+        winningUrl == _credentials!.backupServerUrl) {
+      _activeNetworkMode = 'backup_hotspot';
+    } else {
+      _activeNetworkMode = 'primary_router';
+    }
+
+    final candidates = <String>{
+      winningUrl,
+      if (_credentials!.primaryServerUrl.isNotEmpty) _credentials!.primaryServerUrl,
+      if (_credentials!.backupServerUrl.isNotEmpty) _credentials!.backupServerUrl,
+      ..._credentials!.candidateServerUrls,
+    }.where((u) => u.isNotEmpty).toList();
+
+    if (winningUrl != _credentials!.serverUrl ||
+        candidates.length != _credentials!.candidateServerUrls.length) {
+      _credentials = _credentials!.copyWith(
+        serverUrl: winningUrl,
+        candidateServerUrls: candidates,
+      );
+      await _credStore.saveCredentials(_credentials!);
+    }
+    await _absorbServerTopology(health);
+    _statusMessage = _activeNetworkMode == 'backup_hotspot'
+        ? 'Terhubung melalui Hotspot Cadangan ($winningUrl).'
+        : 'Terhubung melalui Router Utama ($winningUrl).';
+  }
+
+  Future<bool> checkConnectivityAndRestoreSession({
+    String? manualHostOverride,
+    int? manualPortOverride,
+  }) async {
     if (_credentials == null || !_credentials!.isPaired) return false;
     _isConnecting = true;
+    _lastError = null;
     notifyListeners();
     try {
-      await httpClient.checkHealth(
-        baseUrl: _credentials!.serverUrl,
-        expectedSha256: _credentials!.tlsCertSha256,
+      final probe = await _discoverAndSelectReachableEndpoint(
+        manualHostOverride: manualHostOverride,
+        manualPortOverride: manualPortOverride,
       );
+      if (probe == null) {
+        return false;
+      }
+
       _adminReachable = true;
+      _serverUnavailableFlag = false;
+      _isReconnecting = false;
 
       // Refresh pinned cert rotation info before issuing device calls
       final certRes = await httpClient.get('/api/v1/security/cert-info', requireSession: false);
@@ -407,6 +806,7 @@ class StaffSessionController extends ChangeNotifier {
         try {
           final meRes = await httpClient.get('/api/v1/auth/me');
           final meData = Map<String, dynamic>.from(meRes['data'] as Map);
+          await _absorbServerTopology(meData);
           _cashier = StaffCashier.fromMap(Map<String, dynamic>.from(meData['cashier'] as Map));
           _drawerMode = (meData['drawer_mode'] ?? _drawerMode).toString();
           _currentShift = meData['current_shift'] is Map
@@ -437,6 +837,7 @@ class StaffSessionController extends ChangeNotifier {
       return false;
     } finally {
       _isConnecting = false;
+      _isReconnecting = false;
       notifyListeners();
     }
   }
@@ -469,6 +870,7 @@ class StaffSessionController extends ChangeNotifier {
         body: {'user_id': userId, 'pin': pin},
       );
       final data = Map<String, dynamic>.from(res['data'] as Map);
+      await _absorbServerTopology(data);
       final sessionToken = (data['session_token'] ?? '').toString();
       final expiresAt = (data['expires_at'] ?? '').toString();
       await _credStore.saveSession(sessionToken, expiresAt);
@@ -482,6 +884,7 @@ class StaffSessionController extends ChangeNotifier {
           ? StaffShift.fromMap(Map<String, dynamic>.from(data['current_shift'] as Map))
           : null;
       _adminReachable = true;
+      _serverUnavailableFlag = false;
 
       await _afterSessionAuthenticated();
       notifyListeners();
@@ -523,6 +926,8 @@ class StaffSessionController extends ChangeNotifier {
     _recentReceipts = [];
     _adminReachable = false;
     _wsConnected = false;
+    _isReconnecting = false;
+    _serverUnavailableFlag = false;
     _revokedFlag = false;
     notifyListeners();
   }
@@ -553,36 +958,6 @@ class StaffSessionController extends ChangeNotifier {
     }
   }
 
-  Future<bool> pairFromQrPayload(String rawQrJson, {required String deviceName}) async {
-    try {
-      final map = jsonDecode(rawQrJson.trim()) as Map<String, dynamic>;
-      final ips = ((map['ips'] as List<dynamic>?) ?? const ['127.0.0.1'])
-          .map((e) => e.toString().trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
-      final port = (map['port'] as num?)?.toInt() ?? 8443;
-      final code = (map['pairing_code'] ?? '').toString();
-      final certSha = (map['cert_sha256'] ?? '').toString();
-      final shortPin = (map['short_pin'] ?? '').toString();
-      for (final ip in ips) {
-        final ok = await pairUsingQrOrManual(
-          host: ip,
-          port: port,
-          pairingCode: code,
-          deviceName: deviceName,
-          fullCertSha256: certSha.isNotEmpty ? certSha : null,
-          shortPin: shortPin.isNotEmpty ? shortPin : null,
-        );
-        if (ok) return true;
-      }
-      return false;
-    } catch (e) {
-      _lastError = 'Format QR Pairing tidak valid: $e';
-      notifyListeners();
-      return false;
-    }
-  }
-
   Future<void> _afterSessionAuthenticated() async {
     await syncBootstrapAndCert();
     await syncCatalogFullOrIncremental();
@@ -598,6 +973,7 @@ class StaffSessionController extends ChangeNotifier {
     try {
       final res = await httpClient.get('/api/v1/store/bootstrap');
       final d = Map<String, dynamic>.from(res['data'] as Map);
+      await _absorbServerTopology(d);
       _storeName = (d['store_name'] ?? _storeName).toString();
       _storeAddress = (d['store_address'] ?? '').toString();
       _storePhone = (d['store_phone'] ?? '').toString();
@@ -1186,6 +1562,7 @@ class StaffSessionController extends ChangeNotifier {
       ));
       _adminReachable = false;
       _wsConnected = false;
+      _serverUnavailableFlag = true;
       _lastError =
           'Koneksi ke Admin terputus saat mengirim transaksi. Keranjang dipertahankan; saat terhubung kembali status transaksi akan direkonsiliasi otomatis (${e.message}).';
       notifyListeners();

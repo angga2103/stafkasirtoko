@@ -636,25 +636,37 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
     late final String label;
     late final bool showSpinner;
 
+    final netStatus = ctrl.networkStatus;
     if (ctrl.connectionState == TerminalConnectionState.revoked) {
       bg = AppTheme.accentRed;
       dot = Colors.white;
       label = 'Dicabut';
       showSpinner = false;
-    } else if (ctrl.isConnecting) {
+    } else if (netStatus == StaffNetworkStatus.connecting) {
       bg = const Color(0xFF0369A1);
       dot = Colors.lightBlueAccent;
       label = 'Connecting';
       showSpinner = true;
-    } else if (ctrl.isReconnecting) {
+    } else if (netStatus == StaffNetworkStatus.reconnecting) {
       bg = AppTheme.accentOrange;
       dot = Colors.amberAccent;
       label = compact ? 'Reconn.' : 'Reconnecting';
       showSpinner = true;
     } else if (ctrl.adminReachable || ctrl.wsConnected) {
-      bg = AppTheme.success;
-      dot = const Color(0xFFBBF7D0);
-      label = 'Online';
+      if (netStatus == StaffNetworkStatus.hotspotBackup) {
+        bg = Colors.orange.shade700;
+        dot = Colors.amberAccent;
+        label = compact ? 'Hotspot' : 'Hotspot Cadangan';
+      } else {
+        bg = AppTheme.success;
+        dot = const Color(0xFFBBF7D0);
+        label = 'Online';
+      }
+      showSpinner = false;
+    } else if (netStatus == StaffNetworkStatus.serverUnavailable) {
+      bg = AppTheme.accentRed;
+      dot = const Color(0xFFFECACA);
+      label = compact ? 'Srv Off' : 'Server Tidak Tersedia';
       showSpinner = false;
     } else {
       bg = AppTheme.accentRed;
@@ -717,8 +729,8 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
             Expanded(
               child: Text(
                 reconn
-                    ? 'Menghubungkan ulang... Terputus dari POS Admin. Transaksi baru dikunci.'
-                    : 'Terputus dari POS Admin. Katalog cache tetap tersedia; transaksi baru dikunci.',
+                    ? 'Menghubungkan ulang (${ctrl.networkStatus.displayLabel})... Terputus dari POS Admin. Transaksi baru dikunci.'
+                    : 'Terputus dari POS Admin (${ctrl.networkStatus.displayLabel}). Katalog cache tetap tersedia; transaksi baru dikunci.',
                 style: const TextStyle(
                   fontSize: 11.5,
                   color: AppTheme.accentRed,
@@ -771,6 +783,29 @@ class _StaffPosScreenState extends State<StaffPosScreen> {
               Icon(Icons.chevron_right_rounded, size: 18, color: AppTheme.accentOrange),
             ],
           ),
+        ),
+      );
+    }
+    if (ctrl.networkStatus == StaffNetworkStatus.hotspotBackup) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        color: Colors.orange.shade50,
+        child: Row(
+          children: [
+            Icon(Icons.wifi_tethering_rounded, size: 16, color: Colors.orange.shade800),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Mode Hotspot Cadangan aktif (${ctrl.credentials?.serverUrl ?? ""}). Router utama terputus; transaksi tetap langsung ke Admin.',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: Colors.orange.shade900,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }

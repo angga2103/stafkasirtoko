@@ -24,6 +24,10 @@ class LanWsClient {
   final SecureCredentialStore _credentialStore;
   final LanHttpClient _httpClient;
 
+  /// Optional controller hook invoked before reconnecting after a socket drop
+  /// so Router <-> Hotspot failover discovery can update the target server URL.
+  Future<void> Function()? onReconnectProbeNeeded;
+
   WebSocket? _socket;
   HttpClient? _wsHttpClient;
   Timer? _heartbeatTimer;
@@ -42,6 +46,7 @@ class LanWsClient {
   LanWsClient({
     required this._credentialStore,
     required this._httpClient,
+    this.onReconnectProbeNeeded,
   });
 
   Stream<WsServerEvent> get events => _eventsController.stream;
@@ -78,6 +83,12 @@ class LanWsClient {
   Future<void> _attemptConnect() async {
     if (!_shouldStayConnected || _disposed) return;
     await _closeCurrentSocket(notify: false);
+
+    if (_reconnectAttempt > 0 && onReconnectProbeNeeded != null) {
+      try {
+        await onReconnectProbeNeeded!();
+      } catch (_) {}
+    }
 
     final creds = await _credentialStore.loadCredentials();
     if (_disposed ||
@@ -217,7 +228,7 @@ class LanWsClient {
 
     _emitConnectionState(false);
 
-    if (closeCode == 4003) {
+    if (closeCode == 4003 || closeCode == 4001) {
       // Explicit server revocation stops auto-reconnect cleanly.
       _shouldStayConnected = false;
       return;

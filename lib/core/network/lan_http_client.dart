@@ -29,6 +29,9 @@ class LanApiException implements Exception {
           errorCode == 'SESSION_REVOKED' ||
           errorCode == 'SESSION_INVALID');
 
+  bool get isSessionLimitExceeded =>
+      statusCode == 409 && errorCode == 'SESSION_LIMIT_EXCEEDED';
+
   @override
   String toString() => '$errorCode ($statusCode): $message';
 }
@@ -36,11 +39,13 @@ class LanApiException implements Exception {
 class LanNetworkException implements Exception {
   final String message;
   final bool isCertificateMismatch;
+  final bool isServerIdMismatch;
   final String? observedCertSha256;
 
   const LanNetworkException(
     this.message, {
     this.isCertificateMismatch = false,
+    this.isServerIdMismatch = false,
     this.observedCertSha256,
   });
 
@@ -162,6 +167,30 @@ class LanHttpClient {
     }
   }
 
+  /// Verifies health over pinned TLS AND rejects endpoints whose persistent
+  /// `server_id` disagrees with [expectedServerId] when configured.
+  Future<Map<String, dynamic>> checkHealthVerified({
+    required String baseUrl,
+    String? expectedSha256,
+    String? expectedShortPin,
+    String? expectedServerId,
+  }) async {
+    final data = await checkHealth(
+      baseUrl: baseUrl,
+      expectedSha256: expectedSha256,
+      expectedShortPin: expectedShortPin,
+    );
+    final cleanExpected = expectedServerId?.trim() ?? '';
+    final observedServerId = (data['server_id'] ?? '').toString().trim();
+    if (cleanExpected.isNotEmpty && observedServerId != cleanExpected) {
+      throw LanNetworkException(
+        'Server ID tidak cocok (diharapkan $cleanExpected, ditemukan ${observedServerId.isEmpty ? "-" : observedServerId}).',
+        isServerIdMismatch: true,
+      );
+    }
+    return data;
+  }
+
   /// Exchanges a short-lived pairing code for terminal credentials over pinned TLS.
   Future<Map<String, dynamic>> pairTerminal({
     required String baseUrl,
@@ -187,7 +216,7 @@ class LanHttpClient {
         'device_name': deviceName.trim(),
         'device_model': deviceModel.trim(),
         'device_uuid': deviceUuid.trim(),
-        'app_version': '1.0.0',
+        'app_version': '1.1.0',
       }));
       final res = await req.close().timeout(requestTimeout);
       final body = await res.transform(utf8.decoder).join();
